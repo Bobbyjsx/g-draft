@@ -67,7 +67,7 @@
     "dev": "tsx src/cli/index.ts",
     "format": "biome format --write .",
     "lint": "biome lint --diagnostic-level=error",
-    "lint:fix": "biome lint --write --unsafe && biome format --write",
+    "lint:fix": "biome lint --write --unsafe && biome format --write ",
     "prepare": "husky",
     "prepublishOnly": "npm run build",
     "start": "node dist/cli/index.js",
