@@ -10,13 +10,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22' # Bumped default to 22
 
-      - run: npm ci
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Configure Git user
         run: |
@@ -24,15 +30,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version and push
-        # run: npm run version
         run: |
           echo "Checking for pending changesets..."
-          if npx changeset version | grep 'No unreleased changesets'; then
+          if pnpm exec changeset version | grep 'No unreleased changesets'; then
             echo "✅ No changesets to version. Skipping..."
             exit 0
           fi
           echo "🚀 Changesets found. Running version script..."
-          npm run version
+          pnpm run version
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
