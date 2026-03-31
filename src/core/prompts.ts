@@ -26,6 +26,9 @@ export const PROMPTS = {
     - Motivation
     - Potential Risks or Side Effects
 
+    Omit:
+    - Thoughts or personal opinions to the PR description.
+
     Diff:
     ${diff}
       `.trim(),
@@ -34,15 +37,18 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
-    Fill this PR template using the provided diff. 
-    
+    Fill this PR template using the provided diff.
+
     CRITICAL RULES:
-    1. NEVER remove or omit any sections, headers, or existing text from the template.
+    1. NEVER remove or omit any sections, headers, or existing text from the template, except comments.
     2. Only FILL in the information required by the template.
     3. REPLACE placeholders (like "Fixes # (issue)") with actual data if available in the diff, or leave them as is if not.
     4. CHECK [ ] or UNCHECK [x] boxes as appropriate based on the diff.
     5. Maintain the exact formatting and structure of the original template.
     6. Ensure all sections are detailed and accurate.
+    7. Do not include any content not explicitly requested in the template.
+    8. Avoid adding thoughts or personal opinions to the PR description.
+    9. Output only a copy - pastable pr description in line with the template.
 
     Template:
     ${template}
