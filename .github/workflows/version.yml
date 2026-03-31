@@ -53,7 +53,9 @@ jobs:
           # Commit and push the changes (package.json, changelogs, deleted changesets)
           git add .
           git commit -m "chore: version bump"
-          git push origin main
+          
+          # Use HEAD:main to avoid ambiguity if a tag named 'main' exists
+          git push origin HEAD:main
           echo "versioned=true" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,5 +64,7 @@ jobs:
         if: steps.versioning.outputs.versioned == 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          # Delete tag if it exists locally to avoid conflicts
+          git tag -d "v$VERSION" 2>/dev/null || true
           git tag "v$VERSION"
           git push origin "v$VERSION"
