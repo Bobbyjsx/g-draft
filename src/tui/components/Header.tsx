@@ -1,27 +1,15 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import fs from 'node:fs';
-import path from 'node:path';
 import { Box, Text, useStdout } from 'ink';
 import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
 import latestVersion from 'latest-version';
 import semver from 'semver';
-
-// Helper to get version from package.json
-const getVersion = () => {
-  try {
-    const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    return pkg.version;
-  } catch {
-    return '1.0.0';
-  }
-};
+import { APP_VERSION } from '../../core/version.js';
 
 const pkg = {
   name: 'g-draft',
-  version: getVersion(),
+  version: APP_VERSION,
 };
 
 export const Header: React.FC = () => {

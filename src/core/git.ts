@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execa } from 'execa';
 
 export interface DiffOptions {
-  mode: 'staged' | 'branch' | 'auto';
+  mode: 'staged' | 'branch' | 'auto' | 'last_commit';
   baseBranch?: string;
 }
 
@@ -37,14 +37,34 @@ export class GitService {
     }
   }
 
-  async getDiff(options: DiffOptions): Promise<{ diff: string; command: string }> {
+  async getDiff(options: DiffOptions): Promise<{ diff: string; command: string; mode: string }> {
     const { mode, baseBranch = 'main' } = options;
 
     try {
       if (mode === 'staged') {
         const cmd = 'git --no-pager diff --cached';
         const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached']);
-        return { command: cmd, diff: stdout };
+        return { command: cmd, diff: stdout, mode: 'staged' };
+      }
+
+      if (mode === 'last_commit') {
+        const { stdout: count } = await execa('git', ['--no-pager', 'rev-list', '--count', 'HEAD']);
+        if (parseInt(count.trim()) > 0) {
+          if (parseInt(count.trim()) === 1) {
+            const cmd = 'git --no-pager diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD';
+            const { stdout: firstCommit } = await execa('git', [
+              '--no-pager',
+              'diff',
+              '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+              'HEAD',
+            ]);
+            return { command: cmd, diff: firstCommit, mode: 'first_commit' };
+          }
+          const cmd = 'git --no-pager diff HEAD~1..HEAD';
+          const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD']);
+          return { command: cmd, diff: lastCommit, mode: 'last_commit' };
+        }
+        return { command: '', diff: '', mode: 'none' };
       }
 
       if (mode === 'branch') {
@@ -53,16 +73,16 @@ export class GitService {
           const mb = mergeBase.trim();
           const cmd = `git --no-pager merge-base ${baseBranch} HEAD && git --no-pager diff ${mb}`;
           const { stdout } = await execa('git', ['--no-pager', 'diff', mb]);
-          return { command: cmd, diff: stdout };
+          return { command: cmd, diff: stdout, mode: 'branch' };
         } catch {
           // Fallback to triple-dot if merge-base fails
           const cmd = `git --no-pager diff ${baseBranch}...`;
           const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`]);
-          return { command: cmd, diff: stdout };
+          return { command: cmd, diff: stdout, mode: 'branch' };
         }
       }
     } catch {
-      return { command: '', diff: '' };
+      return { command: '', diff: '', mode: 'error' };
     }
 
     // Auto logic
@@ -81,33 +101,25 @@ export class GitService {
     try {
       const cmd = 'git --no-pager diff';
       const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff']);
-      if (unstaged) return { command: cmd, diff: unstaged };
+      if (unstaged) return { command: cmd, diff: unstaged, mode: 'unstaged' };
     } catch {
       // Ignore
     }
 
     // 4. Fallback to last commit
-    try {
-      const { stdout: count } = await execa('git', ['--no-pager', 'rev-list', '--count', 'HEAD']);
-      if (parseInt(count.trim()) > 0) {
-        if (parseInt(count.trim()) === 1) {
-          const cmd = 'git --no-pager diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD';
-          const { stdout: firstCommit } = await execa('git', [
-            '--no-pager',
-            'diff',
-            '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
-            'HEAD',
-          ]);
-          return { command: cmd, diff: firstCommit };
-        }
-        const cmd = 'git --no-pager diff HEAD~1..HEAD';
-        const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD']);
-        return { command: cmd, diff: lastCommit };
-      }
-      return { command: '', diff: '' };
-    } catch {
-      return { command: '', diff: '' };
-    }
+    return this.getDiff({ mode: 'last_commit' });
+  }
+
+  static formatMode(m?: string): string {
+    if (!m) return '';
+    const modes: Record<string, string> = {
+      branch: 'from branch diff',
+      first_commit: 'from first commit',
+      last_commit: 'from last commit',
+      staged: 'from staged changes',
+      unstaged: 'from unstaged changes',
+    };
+    return modes[m] || `via ${m}`;
   }
 
   async getPRTemplate(): Promise<string | null> {

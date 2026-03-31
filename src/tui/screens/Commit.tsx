@@ -5,7 +5,7 @@ import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
 import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
-import type { GitService } from '../../core/git.js';
+import { GitService } from '../../core/git.js';
 import { PROMPTS } from '../../core/prompts.js';
 import { getProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
@@ -26,6 +26,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const [editing, setEditing] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'committing' | 'done'>('idle');
   const [diff, setDiff] = useState<string>('');
+  const [mode, setMode] = useState<string>('staged');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
@@ -41,34 +42,39 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     setError,
     lastGeneratedAt,
     setLastGeneratedAt,
+    lastMetadata,
+    setLastMetadata,
   } = useAIGenerator({
     action: 'commit',
     diff,
+    metadata: { mode },
     prompt,
     provider,
     setGlobalLoading: setLoading,
   });
 
-  const loadingText = useLoadingMessages('commit', internalLoading || dataLoading);
+  const loadingText = useLoadingMessages('commit', internalLoading || dataLoading, { mode });
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
 
   const loadDiff = useCallback(async () => {
     setDataLoading(true);
     try {
-      const { diff: d } = await gitService.getDiff({ mode: 'staged' });
+      const { diff: d, mode: m } = await gitService.getDiff({ mode: 'staged' });
       if (!d) {
-        setError('No staged changes found. Stage some files first.');
+        setError('No changes found. Stage some files first or ensure there are changes.');
         setDataLoading(false);
         return;
       }
       setDiff(d);
+      setMode(m);
 
       // Check cache
       const cached = cacheManager.get('commit');
       if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
         setMessage(cached.content);
         setLastGeneratedAt(cached.timestamp);
+        setLastMetadata(cached.metadata ?? null);
         setIsCached(true);
       }
     } catch (e: any) {
@@ -76,7 +82,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     } finally {
       setDataLoading(false);
     }
-  }, [gitService, setError, setMessage, setLastGeneratedAt]);
+  }, [gitService, setError, setMessage, setLastGeneratedAt, setLastMetadata]);
 
   useEffect(() => {
     loadDiff();
@@ -158,9 +164,17 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
 
       <Box flexDirection='column' gap={1}>
         <Box justifyContent='space-between' width={(stdout?.columns || 80) - 4}>
-          <Text bold color='cyan'>
-            Generated Commit Message
-          </Text>
+          <Box gap={1}>
+            <Text bold color='cyan'>
+              Generated Commit Message
+            </Text>
+            {Boolean(!isActuallyLoading && lastMetadata?.mode) && (
+              <Text color='gray' dimColor italic>
+                ({GitService.formatMode(lastMetadata?.mode as string)})
+              </Text>
+            )}
+          </Box>
+
           {!isActuallyLoading && lastGeneratedAt && (
             <Text color='gray' dimColor italic>
               {isCached ? 'Loaded from cache' : 'Generated'} at {new Date(lastGeneratedAt).toLocaleTimeString()}

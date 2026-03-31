@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 
-const LOADING_MESSAGES: Record<string, string[]> = {
-  commit: [
-    'Analyzing your staged changes...',
-    'Identifying key modified files...',
+export interface LoadingContext {
+  mode?: string;
+  branch?: string;
+  [key: string]: any;
+}
+
+type MessageGenerator = (ctx?: LoadingContext) => string[];
+
+const LOADING_MESSAGES: Record<string, string[] | MessageGenerator> = {
+  commit: (ctx) => [
+    ctx?.mode === 'staged' ? 'Analyzing your staged changes...' : 'Analyzing changes...',
+    ctx?.mode === 'last_commit' ? 'Analyzing last commit...' : 'Identifying key modified files...',
     'Interpreting code modifications...',
     'Summarizing logic changes...',
     'Structuring conventional commit message...',
@@ -12,8 +20,8 @@ const LOADING_MESSAGES: Record<string, string[]> = {
     'Almost ready...',
     'This is taking some time :(...',
   ],
-  pr: [
-    'Comparing branch history...',
+  pr: (ctx) => [
+    ctx?.branch ? `Comparing branch ${ctx.branch}...` : 'Comparing branch history...',
     'Scanning all branch diffs...',
     'Identifying core features and fixes...',
     'Applying project PR template...',
@@ -38,9 +46,21 @@ const LOADING_MESSAGES: Record<string, string[]> = {
   ],
 };
 
-export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: boolean) => {
+export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: boolean, context?: LoadingContext) => {
   const [index, setIndex] = useState(0);
-  const messages = LOADING_MESSAGES[type];
+
+  const getMessages = () => {
+    const entry = LOADING_MESSAGES[type];
+    return typeof entry === 'function' ? entry(context) : entry;
+  };
+
+  const [messages, setMessages] = useState<string[]>(getMessages());
+
+  useEffect(() => {
+    if (isActive) {
+      setMessages(getMessages());
+    }
+  }, [isActive, type, context?.mode, context?.branch]);
 
   useEffect(() => {
     if (!isActive) {
@@ -49,11 +69,17 @@ export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: b
     }
 
     const interval = setInterval(() => {
-      setIndex((prev) => (prev + 1) % messages.length);
-    }, 3500);
+      // Randomize selection as requested, but try not to show the same twice in a row if multiple exist
+      setIndex((prev) => {
+        if (messages.length <= 1) return 0;
+        let next = Math.floor(Math.random() * messages.length);
+        if (next === prev) next = (next + 1) % messages.length;
+        return next;
+      });
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [isActive, messages.length]);
 
-  return messages[index];
+  return messages[index] || 'Processing...';
 };

@@ -6,6 +6,7 @@ export interface CacheEntry {
   content: string;
   timestamp: string;
   diffHash: string;
+  metadata?: Record<string, unknown>;
 }
 
 export type CacheAction = 'commit' | 'pr' | 'review';

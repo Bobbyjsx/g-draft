@@ -1,6 +1,7 @@
 import type React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
+import { APP_VERSION } from '../../core/version.js';
 
 interface StatusBarProps {
   screen: string;
@@ -30,7 +31,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ screen, loading }) => {
 
       <Box>
         <Text color='white' dimColor>
-          G-DRAFT ✦ v1.0.0
+          G-DRAFT ✦ v{APP_VERSION}
         </Text>
       </Box>
     </Box>

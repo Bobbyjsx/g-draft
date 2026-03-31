@@ -25,6 +25,7 @@ interface PRScreenProps {
 export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [diff, setDiff] = useState<string>('');
+  const [branch, setBranch] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
@@ -40,15 +41,18 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
     setError,
     lastGeneratedAt,
     setLastGeneratedAt,
+    lastMetadata,
+    setLastMetadata,
   } = useAIGenerator({
     action: 'pr',
     diff,
+    metadata: { branch },
     prompt,
     provider,
     setGlobalLoading: setLoading,
   });
 
-  const loadingText = useLoadingMessages('pr', internalLoading || dataLoading);
+  const loadingText = useLoadingMessages('pr', internalLoading || dataLoading, { branch });
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
   const width = stdout?.columns || 80;
@@ -56,6 +60,9 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     try {
+      const b = await gitService.getCurrentBranch();
+      setBranch(b);
+
       const { diff: d } = await gitService.getDiff({
         baseBranch: config.baseBranch,
         mode: 'auto',
@@ -76,6 +83,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
       if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
         setPrContent(cached.content);
         setLastGeneratedAt(cached.timestamp);
+        setLastMetadata(cached.metadata ?? null);
         setIsCached(true);
       }
     } catch (e: any) {
@@ -83,7 +91,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
     } finally {
       setDataLoading(false);
     }
-  }, [config.baseBranch, gitService, setError, setPrContent, setLastGeneratedAt]);
+  }, [config.baseBranch, gitService, setError, setPrContent, setLastGeneratedAt, setLastMetadata]);
 
   useEffect(() => {
     loadData();
@@ -134,9 +142,16 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
       ) : (
         <Box flexDirection='column' flexGrow={1}>
           <Box justifyContent='space-between' marginBottom={1} paddingX={1} width='100%'>
-            <Text bold color='blue'>
-              AI PR Assistant
-            </Text>
+            <Box gap={1}>
+              <Text bold color='blue'>
+                AI PR Assistant
+              </Text>
+              {Boolean(lastMetadata?.branch) && (
+                <Text color='gray' dimColor italic>
+                  (for {lastMetadata?.branch as string})
+                </Text>
+              )}
+            </Box>
             {lastGeneratedAt && (
               <Text color='gray' dimColor italic>
                 {isCached ? 'Loaded from cache' : 'Generated'} at {new Date(lastGeneratedAt).toLocaleTimeString()}

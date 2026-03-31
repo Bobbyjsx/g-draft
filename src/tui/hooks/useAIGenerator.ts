@@ -8,7 +8,8 @@ interface UseAIGeneratorOptions {
   provider: AIProvider;
   prompt: string;
   diff?: string;
-  onSuccess?: (response: string) => void;
+  metadata?: Record<string, unknown>;
+  onSuccess?: (response: string, metadata?: Record<string, unknown>) => void;
   onError?: (error: string) => void;
   setGlobalLoading: (loading: boolean) => void;
 }
@@ -18,6 +19,7 @@ export const useAIGenerator = ({
   provider,
   prompt,
   diff,
+  metadata,
   onSuccess,
   onError,
   setGlobalLoading,
@@ -26,6 +28,7 @@ export const useAIGenerator = ({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string>('');
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
+  const [lastMetadata, setLastMetadata] = useState<Record<string, unknown> | null>(null);
 
   const generate = useCallback(async () => {
     if (!prompt) return;
@@ -44,12 +47,14 @@ export const useAIGenerator = ({
 
       const timestamp = new Date().toISOString();
       setLastGeneratedAt(timestamp);
+      setLastMetadata(metadata ?? null);
 
       // Save to cache
       if (diff) {
         cacheManager.set(action, {
           content: res,
           diffHash: cacheManager.generateDiffHash(diff),
+          metadata,
           timestamp,
         });
       }
@@ -61,7 +66,7 @@ export const useAIGenerator = ({
         status: 'success',
       });
 
-      onSuccess?.(res);
+      onSuccess?.(res, metadata);
     } catch (e: any) {
       const msg = e.message || `Error generating ${action}`;
       setError(msg);
@@ -79,7 +84,18 @@ export const useAIGenerator = ({
       setLoading(false);
       setGlobalLoading(false);
     }
-  }, [action, provider, prompt, diff, onSuccess, onError, setGlobalLoading]);
+  }, [action, provider, prompt, diff, metadata, onSuccess, onError, setGlobalLoading]);
 
-  return { error, generate, lastGeneratedAt, loading, result, setError, setLastGeneratedAt, setResult };
+  return {
+    error,
+    generate,
+    lastGeneratedAt,
+    lastMetadata,
+    loading,
+    result,
+    setError,
+    setLastGeneratedAt,
+    setLastMetadata,
+    setResult,
+  };
 };

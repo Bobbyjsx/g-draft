@@ -1,8 +1,9 @@
 import chalk from 'chalk';
+import ora from 'ora';
 import { type CacheAction, cacheManager } from '../core/cache.js';
 import { copyToClipboard } from '../core/clipboard.js';
 import type { Config } from '../core/config.js';
-import type { GitService } from '../core/git.js';
+import { GitService } from '../core/git.js';
 import { logger } from '../core/logger.js';
 import { getProvider } from '../providers/index.js';
 
@@ -15,7 +16,32 @@ interface PipelineOptions {
   diffCommand?: string;
   copy?: boolean;
   diff?: string;
+  metadata?: Record<string, unknown>;
 }
+
+const getLoadingMessages = (action: string, metadata?: Record<string, unknown>): string[] => {
+  if (action === 'commit') {
+    const mode = metadata?.mode as string;
+    return [
+      mode === 'staged' ? 'Analyzing your staged changes...' : 'Analyzing changes...',
+      mode === 'last_commit' ? 'Analyzing last commit...' : 'Identifying key modified files...',
+      'Interpreting code modifications...',
+      'Summarizing logic changes...',
+      'Structuring conventional commit message...',
+    ];
+  }
+  if (action === 'pr') {
+    const branch = metadata?.branch as string;
+    return [
+      branch ? `Comparing branch ${branch}...` : 'Comparing branch history...',
+      'Scanning all branch diffs...',
+      'Identifying core features and fixes...',
+      'Applying project PR template...',
+      'Generating detailed description...',
+    ];
+  }
+  return [`Running ${action}...`, 'Processing...', 'Almost ready...'];
+};
 
 export const runAIPipeline = async ({
   action,
@@ -26,6 +52,7 @@ export const runAIPipeline = async ({
   diffCommand,
   copy,
   diff,
+  metadata,
 }: PipelineOptions) => {
   const provider = getProvider(config.provider);
 
@@ -35,12 +62,23 @@ export const runAIPipeline = async ({
     process.exit(1);
   }
 
-  console.log(chalk.blue(`Running ${action} with ${config.provider}...`));
+  const messages = getLoadingMessages(action, metadata);
+  const spinner = ora({
+    color: 'cyan',
+    text: messages[0],
+  }).start();
+
+  let messageIndex = 0;
+  const interval = setInterval(() => {
+    messageIndex = (messageIndex + 1) % messages.length;
+    spinner.text = messages[messageIndex];
+  }, 3000);
 
   try {
     const result = await provider.run(prompt);
+    clearInterval(interval);
+    spinner.succeed(chalk.green(`${successMessage} ${GitService.formatMode(metadata?.mode as string)}`));
 
-    console.log(chalk.green(`\n${successMessage}:`));
     console.log(chalk.gray('---'));
     console.log(result);
     console.log(chalk.gray('---\n'));
@@ -70,13 +108,16 @@ export const runAIPipeline = async ({
       cacheManager.set(action as CacheAction, {
         content: result,
         diffHash: cacheManager.generateDiffHash(diff),
+        metadata,
         timestamp: new Date().toISOString(),
       });
     }
 
     return result;
   } catch (e: any) {
-    console.error(chalk.red(`Error during ${action}:`), e.message);
+    clearInterval(interval);
+    spinner.fail(chalk.red(`Error during ${action}`));
+    console.error(chalk.red(e.message));
 
     await logger.logAction({
       action,
@@ -99,7 +140,7 @@ interface ActionWithDiffOptions {
   getPRPrompt?: (template: string, diff: string) => string;
   successMessage: string;
   hintMessage?: string;
-  diffMode?: 'staged' | 'branch' | 'auto';
+  diffMode?: 'staged' | 'branch' | 'auto' | 'last_commit';
   copy?: boolean;
 }
 
@@ -113,7 +154,7 @@ export const runActionWithDiff = async ({
   diffMode = 'auto',
   copy = false,
 }: ActionWithDiffOptions) => {
-  const { diff, command } = await gitService.getDiff({
+  const { diff, command, mode } = await gitService.getDiff({
     baseBranch: config.baseBranch,
     mode: diffMode,
   });
@@ -124,7 +165,11 @@ export const runActionWithDiff = async ({
   }
 
   let prompt = '';
+  const metadata: Record<string, unknown> = { mode };
+
   if (action === 'pr') {
+    const branch = await gitService.getCurrentBranch();
+    metadata.branch = branch;
     const template = await gitService.getPRTemplate();
     const { PROMPTS } = await import('../core/prompts.js');
     prompt = template ? PROMPTS.PR_WITH_TEMPLATE(template, diff) : PROMPTS.PR_NO_TEMPLATE(diff);
@@ -139,6 +184,7 @@ export const runActionWithDiff = async ({
     diff,
     diffCommand: command,
     hintMessage,
+    metadata,
     prompt,
     successMessage,
   });
