@@ -1,0 +1,77 @@
+{
+  "author": "Godswill Ezeala",
+  "bin": {
+    "gdraft": "./dist/cli/index.js"
+  },
+  "dependencies": {
+    "boxen": "^8.0.1",
+    "chalk": "^5.3.0",
+    "chalk-animation": "^2.0.3",
+    "cli-spinners": "^3.4.0",
+    "commander": "^12.0.0",
+    "conf": "^12.0.0",
+    "execa": "^8.0.1",
+    "figures": "^6.1.0",
+    "gradient-string": "^3.0.0",
+    "ink": "^6.8.0",
+    "ink-big-text": "^2.0.0",
+    "ink-gradient": "^4.0.0",
+    "ink-select-input": "^6.2.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "latest-version": "^9.0.0",
+    "package-json": "^10.0.1",
+    "react": "^19.2.4",
+    "semver": "^7.7.4",
+    "wrap-ansi": "^9.0.0",
+    "zod": "^3.22.4"
+  },
+  "description": "AI-Powered Git Assistant (CLI + TUI)",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@changesets/cli": "^2.30.0",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/semver": "^7.7.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "git",
+    "ai",
+    "cli",
+    "tui",
+    "gemini",
+    "claude",
+    "commit"
+  ],
+  "license": "MIT",
+  "lint-staged": {
+    "*.{js,ts,tsx,json}": [
+      "biome check --fix --no-errors-on-unmatched"
+    ]
+  },
+  "main": "dist/index.js",
+  "name": "g-draft",
+  "scripts": {
+    "biome:fixAll": "biome check --fix --no-errors-on-unmatched",
+    "build": "tsc",
+    "changeset:gen": "changeset",
+    "dev": "tsx src/cli/index.ts",
+    "format": "biome format --write .",
+    "lint": "biome lint --diagnostic-level=error",
+    "lint:fix": "biome lint --write --unsafe && biome format --write",
+    "prepare": "husky",
+    "start": "node dist/cli/index.js",
+    "test": "vitest run",
+    "version": "changeset version"
+  },
+  "type": "module",
+  "version": "0.0.0"
+}

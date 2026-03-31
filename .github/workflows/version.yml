@@ -1,0 +1,45 @@
+name: Version and Tag
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  version-and-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and push
+        # run: npm run version
+        run: |
+          echo "Checking for pending changesets..."
+          if npx changeset version | grep 'No unreleased changesets'; then
+            echo "✅ No changesets to version. Skipping..."
+            exit 0
+          fi
+          echo "🚀 Changesets found. Running version script..."
+          npm run version
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push version tag
+        if: success()
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
