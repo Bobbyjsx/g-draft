@@ -37,46 +37,51 @@ export class GitService {
     }
   }
 
-  async getDiff(options: DiffOptions): Promise<string> {
+  async getDiff(options: DiffOptions): Promise<{ diff: string; command: string }> {
     const { mode, baseBranch = 'main' } = options;
 
     try {
       if (mode === 'staged') {
+        const cmd = 'git --no-pager diff --cached';
         const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached']);
-        return stdout;
+        return { command: cmd, diff: stdout };
       }
 
       if (mode === 'branch') {
         try {
           const { stdout: mergeBase } = await execa('git', ['--no-pager', 'merge-base', baseBranch, 'HEAD']);
-          const { stdout } = await execa('git', ['--no-pager', 'diff', mergeBase.trim()]);
-          return stdout;
+          const mb = mergeBase.trim();
+          const cmd = `git --no-pager merge-base ${baseBranch} HEAD && git --no-pager diff ${mb}`;
+          const { stdout } = await execa('git', ['--no-pager', 'diff', mb]);
+          return { command: cmd, diff: stdout };
         } catch {
           // Fallback to triple-dot if merge-base fails
+          const cmd = `git --no-pager diff ${baseBranch}...`;
           const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`]);
-          return stdout;
+          return { command: cmd, diff: stdout };
         }
       }
     } catch {
-      return '';
+      return { command: '', diff: '' };
     }
 
     // Auto logic
     // 1. Prioritize staged changes
-    const staged = await this.getDiff({ mode: 'staged' });
-    if (staged) return staged;
+    const stagedResult = await this.getDiff({ mode: 'staged' });
+    if (stagedResult.diff) return stagedResult;
 
     // 2. If on a branch, show the whole branch diff (including local changes)
     const currentBranch = await this.getCurrentBranch();
     if (currentBranch !== baseBranch && currentBranch !== 'detached') {
-      const branchDiff = await this.getDiff({ baseBranch, mode: 'branch' });
-      if (branchDiff) return branchDiff;
+      const branchResult = await this.getDiff({ baseBranch, mode: 'branch' });
+      if (branchResult.diff) return branchResult;
     }
 
     // 3. If on base branch, show unstaged changes
     try {
+      const cmd = 'git --no-pager diff';
       const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff']);
-      if (unstaged) return unstaged;
+      if (unstaged) return { command: cmd, diff: unstaged };
     } catch {
       // Ignore
     }
@@ -86,20 +91,22 @@ export class GitService {
       const { stdout: count } = await execa('git', ['--no-pager', 'rev-list', '--count', 'HEAD']);
       if (parseInt(count.trim()) > 0) {
         if (parseInt(count.trim()) === 1) {
+          const cmd = 'git --no-pager diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD';
           const { stdout: firstCommit } = await execa('git', [
             '--no-pager',
             'diff',
             '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
             'HEAD',
           ]);
-          return firstCommit;
+          return { command: cmd, diff: firstCommit };
         }
+        const cmd = 'git --no-pager diff HEAD~1..HEAD';
         const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD']);
-        return lastCommit;
+        return { command: cmd, diff: lastCommit };
       }
-      return '';
+      return { command: '', diff: '' };
     } catch {
-      return '';
+      return { command: '', diff: '' };
     }
   }
 

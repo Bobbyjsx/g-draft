@@ -36,8 +36,9 @@ describe('GitService', () => {
     const gitService = new GitService();
     (vi.mocked(execa) as any).mockResolvedValueOnce({ stdout: 'staged changes' });
 
-    const diff = await gitService.getDiff({ mode: 'staged' });
-    expect(diff).toBe('staged changes');
+    const result = await gitService.getDiff({ mode: 'staged' });
+    expect(result.diff).toBe('staged changes');
+    expect(result.command).toBe('git --no-pager diff --cached');
     expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'diff', '--cached']);
   });
 
@@ -47,8 +48,9 @@ describe('GitService', () => {
       .mockResolvedValueOnce({ stdout: 'merge-base-hash' })
       .mockResolvedValueOnce({ stdout: 'branch changes' });
 
-    const diff = await gitService.getDiff({ baseBranch: 'main', mode: 'branch' });
-    expect(diff).toBe('branch changes');
+    const result = await gitService.getDiff({ baseBranch: 'main', mode: 'branch' });
+    expect(result.diff).toBe('branch changes');
+    expect(result.command).toBe('git --no-pager merge-base main HEAD && git --no-pager diff merge-base-hash');
     expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'merge-base', 'main', 'HEAD']);
     expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'diff', 'merge-base-hash']);
   });

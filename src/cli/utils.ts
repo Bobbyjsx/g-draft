@@ -10,9 +10,10 @@ interface PipelineOptions {
   prompt: string;
   successMessage: string;
   hintMessage?: string;
+  diffCommand?: string;
 }
 
-export const runAIPipeline = async ({ action, config, prompt, successMessage, hintMessage }: PipelineOptions) => {
+export const runAIPipeline = async ({ action, config, prompt, successMessage, hintMessage, diffCommand }: PipelineOptions) => {
   const provider = getProvider(config.provider);
 
   if (!(await provider.isAvailable())) {
@@ -37,6 +38,7 @@ export const runAIPipeline = async ({ action, config, prompt, successMessage, hi
 
     await logger.logAction({
       action,
+      diffCommand,
       prompt,
       response: result,
       status: 'success',
@@ -48,6 +50,7 @@ export const runAIPipeline = async ({ action, config, prompt, successMessage, hi
 
     await logger.logAction({
       action,
+      diffCommand,
       error: e.message,
       prompt,
       response: '',
@@ -78,7 +81,7 @@ export const runActionWithDiff = async ({
   hintMessage,
   diffMode = 'auto',
 }: ActionWithDiffOptions) => {
-  const diff = await gitService.getDiff({
+  const { diff, command } = await gitService.getDiff({
     baseBranch: config.baseBranch,
     mode: diffMode,
   });
@@ -100,6 +103,7 @@ export const runActionWithDiff = async ({
   return runAIPipeline({
     action,
     config,
+    diffCommand: command,
     hintMessage,
     prompt,
     successMessage,

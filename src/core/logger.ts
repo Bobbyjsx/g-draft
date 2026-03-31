@@ -9,6 +9,7 @@ export interface LogEntry {
   prompt: string;
   response: string;
   error?: string;
+  diffCommand?: string;
 }
 
 export class Logger {
