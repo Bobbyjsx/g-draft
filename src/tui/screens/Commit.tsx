@@ -56,7 +56,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const loadDiff = useCallback(async () => {
     setDataLoading(true);
     try {
-      const d = await gitService.getDiff({ mode: 'staged' });
+      const { diff: d } = await gitService.getDiff({ mode: 'staged' });
       if (!d) {
         setError('No staged changes found. Stage some files first.');
         setDataLoading(false);
