@@ -8,11 +8,13 @@ export const commitCommand = (configManager: ConfigManager, gitService: GitServi
   return new Command('commit')
     .description('Generate commit message from staged changes')
     .option('-p, --provider <provider>', 'AI provider to use')
+    .option('-c, --copy', 'Copy output to clipboard')
     .action(async (options) => {
       const config = configManager.getMergedConfig(options);
       await runActionWithDiff({
         action: 'commit',
         config,
+        copy: options.copy,
         diffMode: 'auto',
         getPrompt: (diff) => PROMPTS.COMMIT(diff),
         gitService,

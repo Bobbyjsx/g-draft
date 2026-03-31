@@ -1,4 +1,6 @@
 import chalk from 'chalk';
+import { type CacheAction, cacheManager } from '../core/cache.js';
+import { copyToClipboard } from '../core/clipboard.js';
 import type { Config } from '../core/config.js';
 import type { GitService } from '../core/git.js';
 import { logger } from '../core/logger.js';
@@ -11,9 +13,20 @@ interface PipelineOptions {
   successMessage: string;
   hintMessage?: string;
   diffCommand?: string;
+  copy?: boolean;
+  diff?: string;
 }
 
-export const runAIPipeline = async ({ action, config, prompt, successMessage, hintMessage, diffCommand }: PipelineOptions) => {
+export const runAIPipeline = async ({
+  action,
+  config,
+  prompt,
+  successMessage,
+  hintMessage,
+  diffCommand,
+  copy,
+  diff,
+}: PipelineOptions) => {
   const provider = getProvider(config.provider);
 
   if (!(await provider.isAvailable())) {
@@ -32,10 +45,18 @@ export const runAIPipeline = async ({ action, config, prompt, successMessage, hi
     console.log(result);
     console.log(chalk.gray('---\n'));
 
+    if (copy) {
+      const copied = await copyToClipboard(result);
+      if (copied) {
+        console.log(chalk.cyan('✓ Result copied to clipboard'));
+      }
+    }
+
     if (hintMessage) {
       console.log(chalk.yellow(`Hint: ${hintMessage}`));
     }
 
+    // Save to logs
     await logger.logAction({
       action,
       diffCommand,
@@ -43,6 +64,15 @@ export const runAIPipeline = async ({ action, config, prompt, successMessage, hi
       response: result,
       status: 'success',
     });
+
+    // Save to cache for TUI persistence
+    if (diff && ['commit', 'pr', 'review'].includes(action)) {
+      cacheManager.set(action as CacheAction, {
+        content: result,
+        diffHash: cacheManager.generateDiffHash(diff),
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return result;
   } catch (e: any) {
@@ -70,6 +100,7 @@ interface ActionWithDiffOptions {
   successMessage: string;
   hintMessage?: string;
   diffMode?: 'staged' | 'branch' | 'auto';
+  copy?: boolean;
 }
 
 export const runActionWithDiff = async ({
@@ -80,6 +111,7 @@ export const runActionWithDiff = async ({
   successMessage,
   hintMessage,
   diffMode = 'auto',
+  copy = false,
 }: ActionWithDiffOptions) => {
   const { diff, command } = await gitService.getDiff({
     baseBranch: config.baseBranch,
@@ -103,6 +135,8 @@ export const runActionWithDiff = async ({
   return runAIPipeline({
     action,
     config,
+    copy,
+    diff,
     diffCommand: command,
     hintMessage,
     prompt,
