@@ -6,7 +6,7 @@ import type { GitService } from '../../core/git.js';
 export const prCommand = (configManager: ConfigManager, gitService: GitService) => {
   return new Command('pr')
     .description('Generate pull request description')
-    .option('-m, --mode <mode>', 'Diff mode (staged, branch, auto)', 'auto')
+    .option('-m, --mode <mode>', 'Diff mode (staged, branch, auto)', 'branch')
     .option('-b, --base <branch>', 'Base branch to diff against')
     .option('-p, --provider <provider>', 'AI provider to use')
     .action(async (options) => {
