@@ -8,13 +8,19 @@ on:
 jobs:
   version-and-tag:
     runs-on: ubuntu-latest
+    # Prevent infinite loops if the push triggers this action again
+    if: "!contains(github.event.head_commit.message, 'chore: version bump')"
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Required to push back to the repo
+          fetch-depth: 0
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22' # Bumped default to 22
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -30,20 +36,30 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version and push
+        id: versioning
         run: |
-          echo "Checking for pending changesets..."
-          if pnpm exec changeset version | grep 'No unreleased changesets'; then
+          # Check for changesets (excluding README.md)
+          CHANGESETS=$(ls .changeset/*.md 2>/dev/null | grep -v "README.md" || true)
+          
+          if [ -z "$CHANGESETS" ]; then
             echo "✅ No changesets to version. Skipping..."
+            echo "versioned=false" >> $GITHUB_OUTPUT
             exit 0
           fi
+
           echo "🚀 Changesets found. Running version script..."
           pnpm run version
-
+          
+          # Commit and push the changes (package.json, changelogs, deleted changesets)
+          git add .
+          git commit -m "chore: version bump"
+          git push origin main
+          echo "versioned=true" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push version tag
-        if: success()
+        if: steps.versioning.outputs.versioned == 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           git tag "v$VERSION"
