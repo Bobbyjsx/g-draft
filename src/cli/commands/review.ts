@@ -10,11 +10,13 @@ export const reviewCommand = (configManager: ConfigManager, gitService: GitServi
     .option('-m, --mode <mode>', 'Diff mode (staged, branch, auto)', 'auto')
     .option('-b, --base <branch>', 'Base branch to diff against')
     .option('-p, --provider <provider>', 'AI provider to use')
+    .option('-c, --copy', 'Copy output to clipboard')
     .action(async (options) => {
       const config = configManager.getMergedConfig(options);
       await runActionWithDiff({
         action: 'review',
         config,
+        copy: options.copy,
         diffMode: options.mode as any,
         getPrompt: (diff) => PROMPTS.REVIEW(diff),
         gitService,

@@ -34,7 +34,15 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
-    Fill this PR template using the provided diff. Ensure all sections are detailed and accurate.
+    Fill this PR template using the provided diff. 
+    
+    CRITICAL RULES:
+    1. NEVER remove or omit any sections, headers, or existing text from the template.
+    2. Only FILL in the information required by the template.
+    3. REPLACE placeholders (like "Fixes # (issue)") with actual data if available in the diff, or leave them as is if not.
+    4. CHECK [ ] or UNCHECK [x] boxes as appropriate based on the diff.
+    5. Maintain the exact formatting and structure of the original template.
+    6. Ensure all sections are detailed and accurate.
 
     Template:
     ${template}

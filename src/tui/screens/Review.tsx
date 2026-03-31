@@ -53,7 +53,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
   const loadDiff = useCallback(async () => {
     setDataLoading(true);
     try {
-      const d = await gitService.getDiff({
+      const { diff: d } = await gitService.getDiff({
         baseBranch: config.baseBranch,
         mode: 'auto',
       });

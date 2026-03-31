@@ -56,7 +56,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     try {
-      const d = await gitService.getDiff({
+      const { diff: d } = await gitService.getDiff({
         baseBranch: config.baseBranch,
         mode: 'auto',
       });

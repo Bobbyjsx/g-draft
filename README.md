@@ -4,6 +4,33 @@
 
 ---
 
+## 🚀 Quick Usage
+
+`gdraft` works as both a standalone CLI and an interactive TUI.
+
+### Interactive TUI (Recommended)
+```bash
+gdraft tui
+```
+
+### CLI Mode
+```bash
+gdraft commit --copy   # Generate commit message & copy to clipboard
+gdraft pr --copy       # Generate PR description & copy to clipboard
+gdraft review          # Run AI code review on current changes
+```
+
+---
+
+## 📚 Documentation
+
+- [CLI Reference](docs/cli.md) - All commands and flags
+- [TUI Navigation](docs/tui-navigation.md) - Mastering the interactive interface
+- [AI Providers](docs/providers.md) - Setup and configuration for Claude, Gemini, etc.
+- [Contributing](docs/CONTRIBUTING.md) - How to help improve g-draft
+
+---
+
 ## ✨ Key Features
 
 ### 🤖 AI-Powered Workflow

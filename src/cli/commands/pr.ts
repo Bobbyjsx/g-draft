@@ -6,14 +6,16 @@ import type { GitService } from '../../core/git.js';
 export const prCommand = (configManager: ConfigManager, gitService: GitService) => {
   return new Command('pr')
     .description('Generate pull request description')
-    .option('-m, --mode <mode>', 'Diff mode (staged, branch, auto)', 'auto')
+    .option('-m, --mode <mode>', 'Diff mode (staged, branch, auto)', 'branch')
     .option('-b, --base <branch>', 'Base branch to diff against')
     .option('-p, --provider <provider>', 'AI provider to use')
+    .option('-c, --copy', 'Copy output to clipboard')
     .action(async (options) => {
       const config = configManager.getMergedConfig(options);
       await runActionWithDiff({
         action: 'pr',
         config,
+        copy: options.copy,
         diffMode: options.mode as any,
         getPrompt: () => '', // Handled specially inside runActionWithDiff for PR
         gitService,
