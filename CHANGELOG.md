@@ -1,5 +1,11 @@
 # g-draft
 
+## 0.2.1
+
+### Patch Changes
+
+- 87083f1: COntext aware Loading Text
+
 ## 0.2.0
 
 ### Minor Changes
