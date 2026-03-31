@@ -54,8 +54,8 @@ jobs:
           git add .
           git commit -m "chore: version bump"
           
-          # Use HEAD:main to avoid ambiguity if a tag named 'main' exists
-          git push origin HEAD:main
+          # Use HEAD:refs/heads/main to avoid ambiguity if a tag named 'main' exists
+          git push origin HEAD:refs/heads/main
           echo "versioned=true" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
