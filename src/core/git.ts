@@ -1,9 +1,11 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execa } from 'execa';
+import { paths } from './paths.js';
 
 export interface DiffOptions {
-  mode: 'staged' | 'branch' | 'auto' | 'last_commit';
+  mode?: 'staged' | 'branch' | 'auto' | 'last_commit';
   baseBranch?: string;
 }
 
@@ -15,6 +17,33 @@ export class GitService {
     } catch {
       return false;
     }
+  }
+
+  async getProjectInfo(): Promise<{ id: string; name: string; path: string }> {
+    try {
+      const { stdout: root } = await execa('git', ['--no-pager', 'rev-parse', '--show-toplevel']);
+      const projectPath = root.trim();
+      const projectName = path.basename(projectPath);
+      return {
+        id: paths.getProjectId(projectPath),
+        name: projectName,
+        path: projectPath,
+      };
+    } catch {
+      const currentPath = process.cwd();
+      return {
+        id: paths.getProjectId(currentPath),
+        name: path.basename(currentPath),
+        path: currentPath,
+      };
+    }
+  }
+
+  async saveDiffToTempFile(diff: string): Promise<string> {
+    const tmpDir = os.tmpdir();
+    const filePath = path.join(tmpDir, `gdraft-diff-${Date.now()}.txt`);
+    fs.writeFileSync(filePath, diff, 'utf8');
+    return filePath;
   }
 
   async getCurrentBranch(): Promise<string> {
@@ -37,8 +66,8 @@ export class GitService {
     }
   }
 
-  async getDiff(options: DiffOptions): Promise<{ diff: string; command: string; mode: string }> {
-    const { mode, baseBranch = 'main' } = options;
+  async getDiff(options: DiffOptions = {}): Promise<{ diff: string; command: string; mode: string }> {
+    const { mode = 'auto', baseBranch = 'main' } = options;
 
     try {
       if (mode === 'staged') {
@@ -49,8 +78,8 @@ export class GitService {
 
       if (mode === 'last_commit') {
         const { stdout: count } = await execa('git', ['--no-pager', 'rev-list', '--count', 'HEAD']);
-        if (parseInt(count.trim()) > 0) {
-          if (parseInt(count.trim()) === 1) {
+        if (parseInt(count.trim(), 10) > 0) {
+          if (parseInt(count.trim(), 10) === 1) {
             const cmd = 'git --no-pager diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD';
             const { stdout: firstCommit } = await execa('git', [
               '--no-pager',

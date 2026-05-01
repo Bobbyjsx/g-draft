@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 export const ConfigSchema = z.object({
   baseBranch: z.string().default('master'),
+  customInstructions: z.string().default(''),
   diffMode: z.enum(['auto', 'staged', 'branch']).default('auto'),
   provider: z.enum(['gemini', 'claude', 'codex', 'amazon-q']).default('gemini'),
 });
