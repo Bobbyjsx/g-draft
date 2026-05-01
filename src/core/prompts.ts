@@ -1,22 +1,33 @@
 import { SKILLS } from './skills.js';
 
+export interface PromptOptions {
+  customInstructions?: string;
+  projectContext?: string;
+}
+
 export const PROMPTS = {
-  COMMIT: (diff: string) =>
+  COMMIT: (diff: string, options: PromptOptions = {}) =>
     `
     ${PROMPTS.SYSTEM}
+
+    ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Generate a Conventional Commit message from this diff.
 
     Skill: GIT_WORKFLOW
     ${SKILLS.GIT_WORKFLOW}
 
+    ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
+
     Diff:
     ${diff}
       `.trim(),
 
-  PR_NO_TEMPLATE: (diff: string) =>
+  PR_NO_TEMPLATE: (diff: string, options: PromptOptions = {}) =>
     `
     ${PROMPTS.SYSTEM}
+
+    ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Generate a structured Pull Request description from this diff.
 
@@ -29,13 +40,17 @@ export const PROMPTS = {
     Omit:
     - Thoughts or personal opinions to the PR description.
 
+    ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
+
     Diff:
     ${diff}
       `.trim(),
 
-  PR_WITH_TEMPLATE: (template: string, diff: string) =>
+  PR_WITH_TEMPLATE: (template: string, diff: string, options: PromptOptions = {}) =>
     `
     ${PROMPTS.SYSTEM}
+
+    ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Fill this PR template using the provided diff.
 
@@ -50,6 +65,8 @@ export const PROMPTS = {
     8. Avoid adding thoughts or personal opinions to the PR description.
     9. Output only a copy - pastable pr description in line with the template.
 
+    ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
+
     Template:
     ${template}
 
@@ -57,9 +74,11 @@ export const PROMPTS = {
     ${diff}
       `.trim(),
 
-  REVIEW: (diff: string) =>
+  REVIEW: (diff: string, options: PromptOptions = {}) =>
     `
     ${PROMPTS.SYSTEM}
+
+    ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Perform a rigorous code review on this diff.
 
@@ -82,6 +101,8 @@ export const PROMPTS = {
     - ♻️ Code repetitions (Identify existing helpers/components or suggest new abstractions)
 
     Be concise, technical, and highly actionable.
+
+    ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
 
     Diff:
     ${diff}

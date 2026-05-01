@@ -1,6 +1,8 @@
 import type React from 'react';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+// @ts-expect-error
+import { MultilineInput } from 'ink-multiline-input';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import type { Config, ConfigManager } from '../../core/config.js';
@@ -14,15 +16,17 @@ interface SettingsScreenProps {
   setLoading: (loading: boolean) => void;
 }
 
-type SettingsView = 'menu' | 'provider' | 'branch';
+type SettingsView = 'menu' | 'provider' | 'branch' | 'instructions';
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, config, setConfig, onBack, setLoading }) => {
   const [view, setView] = useState<SettingsView>('menu');
   const [tempBranch, setTempBranch] = useState(config.baseBranch);
+  const [tempInstructions, setTempInstructions] = useState(config.customInstructions);
 
   const menuItems = [
     { label: 'Select AI Provider', value: 'provider' },
     { label: 'Update Base Branch', value: 'branch' },
+    { label: 'Custom AI Instructions', value: 'instructions' },
     { label: 'Back to Dashboard', value: 'back' },
   ];
 
@@ -50,10 +54,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
     setView('menu');
   };
 
+  const handleInstructionsSubmit = (value: string) => {
+    configManager.setGlobalConfig('customInstructions', value);
+    setConfig({ ...config, customInstructions: value });
+    setView('menu');
+  };
+
   useInput((_input, key) => {
     if (key.escape) {
-      if (view === 'menu') onBack();
-      else setView('menu');
+      if (view === 'menu') {
+        onBack();
+      } else if (view === 'instructions') {
+        handleInstructionsSubmit(tempInstructions);
+      } else {
+        setView('menu');
+      }
     }
   });
 
@@ -104,10 +119,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
             </Box>
           </Box>
         )}
+
+        {view === 'instructions' && (
+          <Box borderColor='blue' borderStyle='round' flexDirection='column' minWidth={60} paddingX={2} paddingY={1}>
+            <Box justifyContent='center'>
+              <Text bold color='blue'>
+                Custom AI Instructions
+              </Text>
+            </Box>
+            <Box marginTop={1} minHeight={5} paddingX={1}>
+              <MultilineInput onChange={setTempInstructions} value={tempInstructions} />
+            </Box>
+            <Box marginTop={1}>
+              <Text dimColor italic>
+                [Enter] for new line • [Esc] to save and exit
+              </Text>
+            </Box>
+          </Box>
+        )}
       </Box>
 
       <Box justifyContent='center' marginTop={1}>
-        <Text color='gray'>[esc] {view === 'menu' ? 'Back' : 'Cancel'}</Text>
+        <Text color='gray'>[esc] {view === 'menu' ? 'Back' : view === 'instructions' ? 'Save & Exit' : 'Cancel'}</Text>
       </Box>
     </Box>
   );

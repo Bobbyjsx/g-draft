@@ -16,6 +16,7 @@ interface PipelineOptions {
   diffCommand?: string;
   copy?: boolean;
   diff?: string;
+  diffPath?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -52,6 +53,7 @@ export const runAIPipeline = async ({
   diffCommand,
   copy,
   diff,
+  diffPath,
   metadata,
 }: PipelineOptions) => {
   const provider = getProvider(config.provider);
@@ -75,13 +77,43 @@ export const runAIPipeline = async ({
   }, 3000);
 
   try {
-    const result = await provider.run(prompt);
+    let result = '';
+    let thought = '';
+    let streamError: string | null = null;
+
+    await provider.stream(
+      prompt,
+      {
+        onError: (err) => {
+          streamError = err;
+          console.error(chalk.red(`\nProvider Error: ${err}`));
+        },
+        onText: (text) => {
+          result += text;
+        },
+        onThought: (t) => {
+          thought += t;
+        },
+      },
+      diffPath
+    );
+
+    if (streamError) {
+      throw new Error(streamError);
+    }
+
     clearInterval(interval);
     spinner.succeed(chalk.green(`${successMessage} ${GitService.formatMode(metadata?.mode as string)}`));
 
-    console.log(chalk.gray('---'));
+    if (thought) {
+      console.log(chalk.gray('\n--- Thought Process ---'));
+      console.log(chalk.dim(thought));
+      console.log(chalk.gray('-----------------------\n'));
+    }
+
+    console.log(chalk.gray('--- Response ---'));
     console.log(result);
-    console.log(chalk.gray('---\n'));
+    console.log(chalk.gray('----------------\n'));
 
     if (copy) {
       const copied = await copyToClipboard(result);
@@ -101,6 +133,7 @@ export const runAIPipeline = async ({
       prompt,
       response: result,
       status: 'success',
+      thought,
     });
 
     // Save to cache for TUI persistence
@@ -164,6 +197,15 @@ export const runActionWithDiff = async ({
     process.exit(1);
   }
 
+  // Save to temp file for large payload support
+  const diffPath = await gitService.saveDiffToTempFile(diff);
+
+  const info = await gitService.getProjectInfo();
+  const promptOptions = {
+    customInstructions: config.customInstructions,
+    projectContext: info ? `${info.name} at ${info.path}` : undefined,
+  };
+
   let prompt = '';
   const metadata: Record<string, unknown> = { mode };
 
@@ -172,9 +214,9 @@ export const runActionWithDiff = async ({
     metadata.branch = branch;
     const template = await gitService.getPRTemplate();
     const { PROMPTS } = await import('../core/prompts.js');
-    prompt = template ? PROMPTS.PR_WITH_TEMPLATE(template, diff) : PROMPTS.PR_NO_TEMPLATE(diff);
+    prompt = template ? PROMPTS.PR_WITH_TEMPLATE(template, diff, promptOptions) : PROMPTS.PR_NO_TEMPLATE(diff, promptOptions);
   } else {
-    prompt = getPrompt(diff);
+    prompt = getPrompt(diff); // Note: getPrompt should ideally accept promptOptions too, but for simplicity we'll keep it for now or update callers.
   }
 
   return runAIPipeline({
@@ -183,6 +225,7 @@ export const runActionWithDiff = async ({
     copy,
     diff,
     diffCommand: command,
+    diffPath,
     hintMessage,
     metadata,
     prompt,

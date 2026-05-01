@@ -8,6 +8,7 @@ export interface LogEntry {
   status: 'success' | 'error';
   prompt: string;
   response: string;
+  thought?: string;
   error?: string;
   diffCommand?: string;
 }

@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, useApp, useInput } from 'ink';
 import type { Config, ConfigManager } from '../core/config.js';
 import type { GitService } from '../core/git.js';
@@ -24,8 +24,13 @@ interface AppProps {
 export const App: React.FC<AppProps> = ({ configManager, gitService, initialConfig }) => {
   const [screen, setScreen] = useState<Screen>('splash');
   const [config, setConfig] = useState<Config>(initialConfig);
+  const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const { exit } = useApp();
+
+  useEffect(() => {
+    gitService.getProjectInfo().then(setProjectInfo);
+  }, [gitService]);
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
@@ -79,7 +84,7 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
         {renderScreen()}
       </Box>
       <Box marginTop={0} width='100%'>
-        <StatusBar loading={loading} screen={screen} />
+        <StatusBar loading={loading} projectInfo={projectInfo} screen={screen} />
       </Box>
     </Box>
   );

@@ -6,9 +6,10 @@ import { APP_VERSION } from '../../core/version.js';
 interface StatusBarProps {
   screen: string;
   loading?: boolean;
+  projectInfo?: { id: string; name: string; path: string } | null;
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ screen, loading }) => {
+export const StatusBar: React.FC<StatusBarProps> = ({ screen, loading, projectInfo }) => {
   return (
     <Box justifyContent='space-between' paddingTop={2} paddingX={2} width='100%'>
       <Box gap={1}>
@@ -17,6 +18,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({ screen, loading }) => {
             {screen.toUpperCase()}
           </Text>
         </Box>
+        {projectInfo && (
+          <Box marginLeft={1}>
+            <Text color='gray' dimColor>
+              {projectInfo.name} [{projectInfo.id}] ({projectInfo.path})
+            </Text>
+          </Box>
+        )}
         {loading && (
           <Box marginLeft={1}>
             <Text color='yellow'>
