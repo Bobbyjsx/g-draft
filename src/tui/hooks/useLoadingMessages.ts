@@ -60,7 +60,7 @@ export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: b
     if (isActive) {
       setMessages(getMessages());
     }
-  }, [isActive, type, context?.mode, context?.branch]);
+  }, [isActive, getMessages]);
 
   useEffect(() => {
     if (!isActive) {
