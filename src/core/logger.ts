@@ -18,7 +18,16 @@ export class Logger {
     return paths.getLogsDir();
   }
 
+  private lastLoggedError: string | null = null;
+
   async logAction(entry: Omit<LogEntry, 'timestamp'>) {
+    if (entry.status === 'error' && entry.error === this.lastLoggedError) {
+      return;
+    }
+    if (entry.status === 'error' && entry.error) {
+      this.lastLoggedError = entry.error;
+    }
+
     const fullEntry: LogEntry = {
       ...entry,
       timestamp: new Date().toISOString(),
@@ -38,7 +47,7 @@ export class Logger {
       const summaryPath = path.join(logsDir, 'history.log');
       const summaryLine = `[${fullEntry.timestamp}] ACTION: ${fullEntry.action.toUpperCase()} | STATUS: ${fullEntry.status.toUpperCase()}\n`;
       await fs.appendFile(summaryPath, summaryLine, 'utf8');
-    } catch (e) {
+    } catch (_e) {
       // Silent fail for logging
     }
   }

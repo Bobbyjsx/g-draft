@@ -13,6 +13,8 @@ export interface AIProvider {
   isAvailable(): Promise<boolean>;
   run(prompt: string): Promise<string>;
   stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void>;
+  prewarm?(modelId?: string): Promise<void>;
+  dispose?(): Promise<void>;
 }
 
 export abstract class BaseProvider implements AIProvider {
@@ -57,6 +59,7 @@ export abstract class BaseProvider implements AIProvider {
     }
 
     const child = this.spawn(flags, input);
+    let stderr = '';
 
     if (child.stdout) {
       child.stdout.on('data', (chunk) => {
@@ -66,80 +69,380 @@ export abstract class BaseProvider implements AIProvider {
 
     if (child.stderr) {
       child.stderr.on('data', (chunk) => {
-        handlers.onError?.(chunk.toString());
+        stderr += chunk.toString();
       });
     }
 
-    await child;
+    try {
+      await child;
+    } catch (e: any) {
+      handlers.onError?.(stderr || e.message);
+      throw e;
+    }
   }
+
+  async prewarm(_modelId?: string): Promise<void> {}
+  async dispose(): Promise<void> {}
 }
 
 export class GeminiProvider extends BaseProvider {
   name = 'gemini';
   command = 'gemini';
   installGuide = 'npm install -g @google/gemini-cli';
-  protected nonInteractiveFlags = [];
+  protected nonInteractiveFlags = ['--acp'];
+
+  private child: any | null = null;
+  private sessionId: string | null = null;
+  private requestId = 1;
+  private pendingRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private stderr = '';
+  private thoughtQueue: string[] = [];
+  private isTyping = false;
+  private currentHandlers: StreamHandlers | null = null;
+  private streamResolver: (() => void) | null = null;
+  private streamRejecter: ((err: any) => void) | null = null;
+  private isPrewarming = false;
+  private prewarmPromise: Promise<void> | null = null;
+  private turnFinished = false;
 
   async run(prompt: string): Promise<string> {
-    const { stdout } = await this.spawn(['--prompt', prompt], '');
-    return stdout.trim();
+    let result = '';
+    await this.stream(prompt, {
+      onText: (text) => {
+        result += text;
+      },
+    });
+    return result;
+  }
+
+  async prewarm(modelId = 'auto-gemini-3'): Promise<void> {
+    if (this.child) return;
+    if (this.isPrewarming) return this.prewarmPromise || Promise.resolve();
+
+    this.isPrewarming = true;
+    this.prewarmPromise = (async () => {
+      this.child = execa(this.command, this.nonInteractiveFlags, {
+        stderr: 'pipe',
+        stdin: 'pipe',
+        stdout: 'pipe',
+      });
+
+      this.setupListeners();
+
+      try {
+        const initId = this.requestId++;
+        const sessId = this.requestId++;
+
+        const initPromise = new Promise((resolve, reject) => {
+          this.pendingRequests.set(initId, { reject, resolve });
+        });
+        const sessionPromise = new Promise((resolve, reject) => {
+          this.pendingRequests.set(sessId, { reject, resolve });
+        });
+
+        const batch = [
+          JSON.stringify({
+            id: initId,
+            jsonrpc: '2.0',
+            method: 'initialize',
+            params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
+          }),
+          JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
+          JSON.stringify({
+            id: sessId,
+            jsonrpc: '2.0',
+            method: 'session/new',
+            params: {
+              cwd: process.cwd(),
+              mcpServers: [],
+              modelId,
+            },
+          }),
+        ].join('\n');
+
+        this.child.stdin?.write(`${batch}\n`);
+
+        await initPromise;
+        const session: any = await sessionPromise;
+        this.sessionId = session.sessionId;
+      } catch (err) {
+        await this.dispose();
+        throw err;
+      } finally {
+        this.isPrewarming = false;
+        this.prewarmPromise = null;
+      }
+    })();
+
+    return this.prewarmPromise;
+  }
+
+  async dispose(): Promise<void> {
+    if (this.child) {
+      try {
+        this.child.kill('SIGKILL');
+      } catch (_e) {
+        /* Ignore */
+      }
+      this.child = null;
+    }
+    this.sessionId = null;
+    this.isPrewarming = false;
+    this.prewarmPromise = null;
+    this.turnFinished = false;
+    this.isTyping = false;
+    this.thoughtQueue = [];
+    this.pendingRequests.forEach((p) => {
+      p.reject(new Error('Provider disposed'));
+    });
+    this.pendingRequests.clear();
+    if (this.streamResolver) {
+      this.streamResolver();
+      this.streamResolver = null;
+    }
+    this.streamRejecter = null;
+  }
+
+  private setupListeners() {
+    if (!this.child) return;
+
+    let buffer = '';
+
+    this.child.stderr?.on('data', (chunk: any) => {
+      this.stderr += chunk.toString();
+    });
+
+    this.child.stdout?.on('data', (chunk: any) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim().startsWith('{')) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.id !== undefined) {
+            const pending = this.pendingRequests.get(msg.id);
+            if (pending) {
+              this.pendingRequests.delete(msg.id);
+              if (msg.error) {
+                pending.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+              } else {
+                pending.resolve(msg.result);
+              }
+            }
+          } else if (msg.method === 'session/update') {
+            const update = msg.params?.update;
+            if (update?.sessionUpdate === 'agent_message_chunk') {
+              const text = update.content?.text;
+              if (text) this.currentHandlers?.onText(text);
+            } else if (update?.sessionUpdate === 'agent_thought_chunk') {
+              const text = update.content?.text;
+              if (text) {
+                this.thoughtQueue.push(...text.split(''));
+                this.processThoughtQueue();
+              }
+            } else if (update?.sessionUpdate === 'tool_call') {
+              const toolName = update.title || 'tool';
+              this.thoughtQueue.push(...`\n[Action: ${toolName}]\n`.split(''));
+              this.processThoughtQueue();
+            } else if (update?.sessionUpdate === 'tool_call_update') {
+              if (update.status === 'completed') {
+                this.thoughtQueue.push(...' ✓ Done\n'.split(''));
+                this.processThoughtQueue();
+              }
+            }
+          }
+        } catch (_e) {
+          // Ignore parse errors for non-JSON lines
+        }
+      }
+    });
+
+    this.child.on('close', (code: number) => {
+      if (code !== 0 && this.streamRejecter) {
+        this.streamRejecter(new Error(this.stderr || `Process exited with code ${code}`));
+      } else if (this.streamResolver) {
+        this.streamResolver();
+      }
+      this.dispose();
+    });
+
+    this.child.on('error', (err: any) => {
+      if (this.streamRejecter) {
+        this.streamRejecter(err);
+      } else if (this.streamResolver) {
+        this.streamResolver();
+      }
+      this.dispose();
+    });
+  }
+
+  private async processThoughtQueue() {
+    if (this.isTyping) return;
+    this.isTyping = true;
+    while (this.thoughtQueue.length > 0) {
+      const char = this.thoughtQueue.shift();
+      if (char) {
+        this.currentHandlers?.onThought?.(char);
+        await new Promise((r) => setTimeout(r, 5));
+      }
+    }
+    this.isTyping = false;
+    // Resolve if turn is finished or process closed, and queue is empty
+    if ((this.turnFinished || !this.child) && this.streamResolver) {
+      this.streamResolver();
+    }
+  }
+
+  private sendRequest(method: string, params: any) {
+    if (!this.child) throw new Error('Provider not initialized');
+    const id = this.requestId++;
+    const promise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`Request ${method} (id: ${id}) timed out after 300s`));
+      }, 300000);
+
+      this.pendingRequests.set(id, {
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+        resolve: (val) => {
+          clearTimeout(timeout);
+          resolve(val);
+        },
+      });
+    });
+    this.child.stdin?.write(`${JSON.stringify({ id, jsonrpc: '2.0', method, params })}\n`);
+    return promise;
   }
 
   async stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void> {
-    const flags = ['--prompt', prompt];
-    let input = '';
+    const isOneShot = !this.child && !this.isPrewarming;
+    if (isOneShot) {
+      this.child = execa(this.command, this.nonInteractiveFlags, {
+        stderr: 'pipe',
+        stdin: 'pipe',
+        stdout: 'pipe',
+      });
+      this.setupListeners();
 
+      let input = '';
+      if (diffPath && fs.existsSync(diffPath)) {
+        input = fs.readFileSync(diffPath, 'utf8');
+      }
+      const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
+
+      const initId = this.requestId++;
+      const sessId = this.requestId++;
+
+      const streamPromise = new Promise<void>((resolve, reject) => {
+        this.streamResolver = resolve;
+        this.streamRejecter = reject;
+      });
+
+      const initPromise = new Promise((resolve, reject) => {
+        this.pendingRequests.set(initId, { reject, resolve });
+      });
+      const sessionPromise = new Promise((resolve, reject) => {
+        this.pendingRequests.set(sessId, { reject, resolve });
+      });
+
+      const batch = [
+        JSON.stringify({
+          id: initId,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
+        }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
+        JSON.stringify({
+          id: sessId,
+          jsonrpc: '2.0',
+          method: 'session/new',
+          params: { cwd: process.cwd(), mcpServers: [] },
+        }),
+      ].join('\n');
+
+      this.currentHandlers = handlers;
+      this.turnFinished = false;
+      this.child.stdin?.write(`${batch}\n`);
+
+      try {
+        await initPromise;
+        const session: any = await sessionPromise;
+        this.sessionId = session.sessionId;
+
+        await this.sendRequest('session/prompt', {
+          prompt: [{ text: fullPrompt, type: 'text' }],
+          sessionId: this.sessionId,
+        });
+
+        this.turnFinished = true;
+        if (!this.isTyping && this.thoughtQueue.length === 0) {
+          this.streamResolver?.();
+        }
+
+        if (this.child) {
+          this.child.stdin?.end();
+        }
+        await streamPromise;
+      } catch (err) {
+        if (this.streamRejecter) {
+          this.streamRejecter(err);
+        }
+        await this.dispose();
+        throw err;
+      } finally {
+        this.currentHandlers = null;
+        this.streamResolver = null;
+        this.streamRejecter = null;
+        this.turnFinished = false;
+      }
+      return;
+    }
+
+    if (this.isPrewarming) await this.prewarmPromise;
+    if (!this.child) await this.prewarm();
+
+    this.currentHandlers = handlers;
+    this.stderr = '';
+    this.turnFinished = false;
+
+    let input = '';
     if (diffPath && fs.existsSync(diffPath)) {
       input = fs.readFileSync(diffPath, 'utf8');
     }
+    const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
 
-    const child = this.spawn(flags, input);
-
-    let inThought = false;
-
-    if (child.stdout) {
-      child.stdout.on('data', (chunk) => {
-        const data = chunk.toString();
-        let remaining = data;
-
-        // Simple state machine to handle <thought> tags across chunks
-        while (remaining.length > 0) {
-          if (!inThought) {
-            const startIdx = remaining.indexOf('<thought>');
-            if (startIdx !== -1) {
-              // Text before thought
-              if (startIdx > 0) {
-                handlers.onText(remaining.slice(0, startIdx));
-              }
-              inThought = true;
-              remaining = remaining.slice(startIdx + 9);
-            } else {
-              handlers.onText(remaining);
-              remaining = '';
-            }
-          } else {
-            const endIdx = remaining.indexOf('</thought>');
-            if (endIdx !== -1) {
-              // Thought content
-              handlers.onThought?.(remaining.slice(0, endIdx));
-              inThought = false;
-              remaining = remaining.slice(endIdx + 10);
-            } else {
-              handlers.onThought?.(remaining);
-              remaining = '';
-            }
-          }
-        }
+    try {
+      const streamPromise = new Promise<void>((resolve, reject) => {
+        this.streamResolver = resolve;
+        this.streamRejecter = reject;
       });
-    }
 
-    if (child.stderr) {
-      child.stderr.on('data', (chunk) => {
-        handlers.onError?.(chunk.toString());
+      await this.sendRequest('session/prompt', {
+        prompt: [{ text: fullPrompt, type: 'text' }],
+        sessionId: this.sessionId,
       });
-    }
 
-    await child;
+      this.turnFinished = true;
+      if (!this.isTyping && this.thoughtQueue.length === 0) {
+        this.streamResolver?.();
+      }
+
+      await streamPromise;
+    } catch (err: any) {
+      handlers.onError?.(err.message);
+      throw err;
+    } finally {
+      this.currentHandlers = null;
+      this.streamResolver = null;
+      this.streamRejecter = null;
+      this.turnFinished = false;
+    }
   }
 }
 
@@ -163,6 +466,7 @@ export class ClaudeProvider extends BaseProvider {
     }
 
     const child = this.spawn(flags, input);
+    let stderr = '';
 
     if (child.stdout) {
       child.stdout.on('data', (chunk) => {
@@ -172,11 +476,16 @@ export class ClaudeProvider extends BaseProvider {
 
     if (child.stderr) {
       child.stderr.on('data', (chunk) => {
-        handlers.onError?.(chunk.toString());
+        stderr += chunk.toString();
       });
     }
 
-    await child;
+    try {
+      await child;
+    } catch (e: any) {
+      handlers.onError?.(stderr || e.message);
+      throw e;
+    }
   }
 }
 
@@ -199,10 +508,13 @@ export class AmazonQProvider extends BaseProvider {
   }
 }
 
+let geminiInstance: GeminiProvider | null = null;
+
 export function getProvider(name: string): AIProvider {
   switch (name) {
     case 'gemini':
-      return new GeminiProvider();
+      if (!geminiInstance) geminiInstance = new GeminiProvider();
+      return geminiInstance;
     case 'claude':
       return new ClaudeProvider();
     case 'codex':
@@ -210,8 +522,9 @@ export function getProvider(name: string): AIProvider {
     case 'amazon-q':
       return new AmazonQProvider();
     default:
-      return new GeminiProvider();
+      if (!geminiInstance) geminiInstance = new GeminiProvider();
+      return geminiInstance;
   }
 }
 
-export const ALL_PROVIDERS = [new GeminiProvider(), new ClaudeProvider(), new CodexProvider(), new AmazonQProvider()];
+export const ALL_PROVIDERS = [getProvider('gemini'), getProvider('claude'), getProvider('codex'), getProvider('amazon-q')];
