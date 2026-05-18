@@ -44,6 +44,7 @@ export const useAIGenerator = ({
     setThought('');
     setHasAttempted(true);
 
+    const startTime = Date.now();
     let fullResponse = '';
     let fullThought = '';
     let streamError: string | null = null;
@@ -92,6 +93,8 @@ export const useAIGenerator = ({
 
       logger.logAction({
         action,
+        durationMs: Date.now() - startTime,
+        model: provider.getModel?.(),
         prompt,
         response: fullResponse,
         status: 'success',
@@ -105,7 +108,9 @@ export const useAIGenerator = ({
 
       logger.logAction({
         action,
+        durationMs: Date.now() - startTime,
         error: msg,
+        model: provider.getModel?.(),
         prompt,
         response: '',
         status: 'error',

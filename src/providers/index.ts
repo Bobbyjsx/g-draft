@@ -13,6 +13,7 @@ export interface AIProvider {
   isAvailable(): Promise<boolean>;
   run(prompt: string): Promise<string>;
   stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void>;
+  getModel?(): string;
   prewarm?(modelId?: string): Promise<void>;
   dispose?(): Promise<void>;
 }
@@ -83,6 +84,10 @@ export abstract class BaseProvider implements AIProvider {
 
   async prewarm(_modelId?: string): Promise<void> {}
   async dispose(): Promise<void> {}
+
+  getModel(): string {
+    return 'default';
+  }
 }
 
 export class GeminiProvider extends BaseProvider {
@@ -93,6 +98,7 @@ export class GeminiProvider extends BaseProvider {
 
   private child: any | null = null;
   private sessionId: string | null = null;
+  private modelId: string | null = null;
   private requestId = 1;
   private pendingRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
   private stderr = '';
@@ -104,7 +110,6 @@ export class GeminiProvider extends BaseProvider {
   private isPrewarming = false;
   private prewarmPromise: Promise<void> | null = null;
   private turnFinished = false;
-  private queue: Promise<void> = Promise.resolve();
 
   async run(prompt: string): Promise<string> {
     let result = '';
@@ -166,6 +171,7 @@ export class GeminiProvider extends BaseProvider {
         await initPromise;
         const session: any = await sessionPromise;
         this.sessionId = session.sessionId;
+        this.modelId = session.modelId || modelId;
       } catch (err) {
         await this.dispose();
         throw err;
@@ -180,28 +186,17 @@ export class GeminiProvider extends BaseProvider {
 
   async dispose(): Promise<void> {
     if (this.child) {
-      try {
-        this.child.kill('SIGKILL');
-      } catch (_e) {
-        /* Ignore */
-      }
+      this.child.kill();
       this.child = null;
+      this.sessionId = null;
+      this.modelId = null;
+      this.isPrewarming = false;
+      this.prewarmPromise = null;
     }
-    this.sessionId = null;
-    this.isPrewarming = false;
-    this.prewarmPromise = null;
-    this.turnFinished = false;
-    this.isTyping = false;
-    this.thoughtQueue = [];
-    this.pendingRequests.forEach((p) => {
-      p.reject(new Error('Provider disposed'));
-    });
-    this.pendingRequests.clear();
-    if (this.streamResolver) {
-      this.streamResolver();
-      this.streamResolver = null;
-    }
-    this.streamRejecter = null;
+  }
+
+  getModel(): string {
+    return this.modelId || 'gemini-3-flash';
   }
 
   private setupListeners() {
@@ -229,6 +224,9 @@ export class GeminiProvider extends BaseProvider {
               if (msg.error) {
                 pending.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
               } else {
+                if (msg.result?.modelId) {
+                  this.modelId = msg.result.modelId;
+                }
                 pending.resolve(msg.result);
               }
             }
@@ -264,17 +262,16 @@ export class GeminiProvider extends BaseProvider {
       if (code !== 0 && this.streamRejecter) {
         this.streamRejecter(new Error(this.stderr || `Process exited with code ${code}`));
       } else if (this.streamResolver) {
-        this.streamResolver();
+        if (!this.isTyping) this.streamResolver();
       }
-      this.dispose();
+      this.child = null;
+      this.sessionId = null;
+      this.isPrewarming = false;
+      this.prewarmPromise = null;
     });
 
     this.child.on('error', (err: any) => {
-      if (this.streamRejecter) {
-        this.streamRejecter(err);
-      } else if (this.streamResolver) {
-        this.streamResolver();
-      }
+      this.streamRejecter?.(err);
       this.dispose();
     });
   }
@@ -302,8 +299,8 @@ export class GeminiProvider extends BaseProvider {
     const promise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`Request ${method} (id: ${id}) timed out after 30s`));
-      }, 30000);
+        reject(new Error(`Request ${method} (id: ${id}) timed out after 300s`));
+      }, 300000);
 
       this.pendingRequests.set(id, {
         reject: (err) => {
@@ -321,97 +318,14 @@ export class GeminiProvider extends BaseProvider {
   }
 
   async stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void> {
-    const streamTask = async () => {
-      const isOneShot = !this.child && !this.isPrewarming;
-      if (isOneShot) {
-        this.child = execa(this.command, this.nonInteractiveFlags, {
-          stderr: 'pipe',
-          stdin: 'pipe',
-          stdout: 'pipe',
-        });
-        this.setupListeners();
-
-        let input = '';
-        if (diffPath && fs.existsSync(diffPath)) {
-          input = fs.readFileSync(diffPath, 'utf8');
-        }
-        const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
-
-        const initId = this.requestId++;
-        const sessId = this.requestId++;
-
-        const streamPromise = new Promise<void>((resolve, reject) => {
-          this.streamResolver = resolve;
-          this.streamRejecter = reject;
-        });
-
-        const initPromise = new Promise((resolve, reject) => {
-          this.pendingRequests.set(initId, { reject, resolve });
-        });
-        const sessionPromise = new Promise((resolve, reject) => {
-          this.pendingRequests.set(sessId, { reject, resolve });
-        });
-
-        const batch = [
-          JSON.stringify({
-            id: initId,
-            jsonrpc: '2.0',
-            method: 'initialize',
-            params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
-          }),
-          JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
-          JSON.stringify({
-            id: sessId,
-            jsonrpc: '2.0',
-            method: 'session/new',
-            params: { cwd: process.cwd(), mcpServers: [] },
-          }),
-        ].join('\n');
-
-        this.currentHandlers = handlers;
-        this.turnFinished = false;
-        this.child.stdin?.write(`${batch}\n`);
-
-        try {
-          await initPromise;
-          const session: any = await sessionPromise;
-          this.sessionId = session.sessionId;
-
-          await this.sendRequest('session/prompt', {
-            prompt: [{ text: fullPrompt, type: 'text' }],
-            sessionId: this.sessionId,
-          });
-
-          this.turnFinished = true;
-          if (!this.isTyping && this.thoughtQueue.length === 0) {
-            this.streamResolver?.();
-          }
-
-          if (this.child) {
-            this.child.stdin?.end();
-          }
-          await streamPromise;
-        } catch (err) {
-          if (this.streamRejecter) {
-            this.streamRejecter(err);
-          }
-          await this.dispose();
-          throw err;
-        } finally {
-          this.currentHandlers = null;
-          this.streamResolver = null;
-          this.streamRejecter = null;
-          this.turnFinished = false;
-        }
-        return;
-      }
-
-      if (this.isPrewarming) await this.prewarmPromise;
-      if (!this.child) await this.prewarm();
-
-      this.currentHandlers = handlers;
-      this.stderr = '';
-      this.turnFinished = false;
+    const isOneShot = !this.child && !this.isPrewarming;
+    if (isOneShot) {
+      this.child = execa(this.command, this.nonInteractiveFlags, {
+        stderr: 'pipe',
+        stdin: 'pipe',
+        stdout: 'pipe',
+      });
+      this.setupListeners();
 
       let input = '';
       if (diffPath && fs.existsSync(diffPath)) {
@@ -419,11 +333,46 @@ export class GeminiProvider extends BaseProvider {
       }
       const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
 
+      const initId = this.requestId++;
+      const sessId = this.requestId++;
+
+      const streamPromise = new Promise<void>((resolve, reject) => {
+        this.streamResolver = resolve;
+        this.streamRejecter = reject;
+      });
+
+      const initPromise = new Promise((resolve, reject) => {
+        this.pendingRequests.set(initId, { reject, resolve });
+      });
+      const sessionPromise = new Promise((resolve, reject) => {
+        this.pendingRequests.set(sessId, { reject, resolve });
+      });
+
+      const batch = [
+        JSON.stringify({
+          id: initId,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
+        }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
+        JSON.stringify({
+          id: sessId,
+          jsonrpc: '2.0',
+          method: 'session/new',
+          params: { cwd: process.cwd(), mcpServers: [] },
+        }),
+      ].join('\n');
+
+      this.currentHandlers = handlers;
+      this.turnFinished = false;
+      this.child.stdin?.write(`${batch}\n`);
+
       try {
-        const streamPromise = new Promise<void>((resolve, reject) => {
-          this.streamResolver = resolve;
-          this.streamRejecter = reject;
-        });
+        await initPromise;
+        const session: any = await sessionPromise;
+        this.sessionId = session.sessionId;
+        this.modelId = session.modelId || 'default';
 
         await this.sendRequest('session/prompt', {
           prompt: [{ text: fullPrompt, type: 'text' }],
@@ -435,23 +384,57 @@ export class GeminiProvider extends BaseProvider {
           this.streamResolver?.();
         }
 
+        if (this.child) {
+          this.child.stdin?.end();
+        }
         await streamPromise;
-      } catch (err: any) {
-        handlers.onError?.(err.message);
+      } catch (err) {
+        this.streamRejecter?.(err);
+        await this.dispose();
         throw err;
-      } finally {
-        this.currentHandlers = null;
-        this.streamResolver = null;
-        this.streamRejecter = null;
-        this.turnFinished = false;
       }
-    };
+      return;
+    }
 
-    this.queue = this.queue.then(streamTask).catch(() => {
-      /* Errors are handled inside streamTask or propagated to the caller of the current turn */
-    });
+    if (this.isPrewarming) await this.prewarmPromise;
+    if (!this.child) await this.prewarm();
 
-    return this.queue;
+    this.currentHandlers = handlers;
+    this.stderr = '';
+    this.turnFinished = false;
+
+    let input = '';
+    if (diffPath && fs.existsSync(diffPath)) {
+      input = fs.readFileSync(diffPath, 'utf8');
+    }
+    const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
+
+    try {
+      const streamPromise = new Promise<void>((resolve, reject) => {
+        this.streamResolver = resolve;
+        this.streamRejecter = reject;
+      });
+
+      await this.sendRequest('session/prompt', {
+        prompt: [{ text: fullPrompt, type: 'text' }],
+        sessionId: this.sessionId,
+      });
+
+      this.turnFinished = true;
+      if (!this.isTyping && this.thoughtQueue.length === 0) {
+        this.streamResolver?.();
+      }
+
+      await streamPromise;
+    } catch (err: any) {
+      handlers.onError?.(err.message);
+      throw err;
+    } finally {
+      this.currentHandlers = null;
+      this.streamResolver = null;
+      this.streamRejecter = null;
+      this.turnFinished = false;
+    }
   }
 }
 

@@ -11,6 +11,8 @@ export interface LogEntry {
   thought?: string;
   error?: string;
   diffCommand?: string;
+  durationMs?: number;
+  model?: string;
 }
 
 export class Logger {
