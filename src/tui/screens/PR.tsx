@@ -23,7 +23,7 @@ interface PRScreenProps {
   setLoading: (loading: boolean) => void;
 }
 
-export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvider, onBack, setLoading }) => {
+export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [diff, setDiff] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
@@ -66,7 +66,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
   const loadData = useCallback(async () => {
     setDataLoading(true);
     // Parallelize git info, branch, diff loading, and AI pre-warming
-    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('auto-gemini-3') : Promise.resolve();
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
 
     try {
       const [info, currentBranch, diffResult] = await Promise.all([
