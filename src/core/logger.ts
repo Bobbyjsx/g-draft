@@ -34,6 +34,8 @@ export class Logger {
       is_tmux: Boolean(process.env.TMUX),
       node_version: process.version,
       os: os.platform(),
+      os_arch: os.arch(),
+      os_machine: os.machine ? os.machine() : 'unknown',
       os_release: os.release(),
       terminal: process.env.TERM_PROGRAM || process.env.TERM || 'unknown',
     };

@@ -32,6 +32,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Inject PostHog Secrets
+        run: |
+          sed -i "s/__GDRAFT_POSTHOG_API_KEY__/${{ secrets.GDRAFT_POSTHOG_API_KEY }}/g" src/core/config.ts
+          sed -i "s|__GDRAFT_POSTHOG_HOST__|${{ secrets.GDRAFT_POSTHOG_HOST || 'https://us.i.posthog.com' }}|g" src/core/config.ts
+
       - name: Run changeset publish
         run: pnpm exec changeset publish
         env:
