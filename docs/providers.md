@@ -9,6 +9,10 @@ g-draft integrates with several AI providers. Each provider is implemented as a 
 - **Provider Name**: `gemini`
 - **CLI Tool**: `gemini`
 - **Installation**: `npm install -g @google/gemini-cli`
+- **Standard**: Full **ACP (Agent Client Protocol)** compliance.
+- **Optimization**: Uses **Handshake Pipelining** and **Persistent Sessions** in TUI mode to eliminate "cold start" latency.
+- **Features**: Supports real-time streaming of thoughts, tool calls, and automated model routing.
+- **Telemetry**: Captures `durationMs` and the actual `model` routed by the agent for each generation.
 - **Configuration**: `gdraft config set provider gemini`
 
 ### Claude

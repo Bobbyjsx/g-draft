@@ -7,7 +7,7 @@ import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
 import type { GitService } from '../../core/git.js';
 import { PROMPTS } from '../../core/prompts.js';
-import { getProvider } from '../../providers/index.js';
+import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
@@ -18,27 +18,32 @@ import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 interface PRScreenProps {
   gitService: GitService;
   config: Config;
+  aiProvider: AIProvider;
   onBack: () => void;
   setLoading: (loading: boolean) => void;
 }
 
-export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, setLoading }) => {
+export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [diff, setDiff] = useState<string>('');
+  const [diffPath, setDiffPath] = useState<string>('');
   const [branch, setBranch] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
-  const provider = useMemo(() => getProvider(config.provider), [config.provider]);
+  const metadata = useMemo(() => ({ branch }), [branch]);
 
   const {
     generate,
     loading: internalLoading,
     error,
     result: prContent,
+    thought,
     setResult: setPrContent,
     setError,
+    hasAttempted,
+    setHasAttempted,
     lastGeneratedAt,
     setLastGeneratedAt,
     lastMetadata,
@@ -46,27 +51,37 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
   } = useAIGenerator({
     action: 'pr',
     diff,
-    metadata: { branch },
+    diffPath,
+    metadata,
     prompt,
-    provider,
+    provider: aiProvider,
     setGlobalLoading: setLoading,
   });
 
   const loadingText = useLoadingMessages('pr', internalLoading || dataLoading, { branch });
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
+  const _width = stdout?.columns || 80;
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
-    try {
-      const b = await gitService.getCurrentBranch();
-      setBranch(b);
+    // Parallelize git info, branch, diff loading, and AI pre-warming
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
 
-      const { diff: d } = await gitService.getDiff({
-        baseBranch: config.baseBranch,
-        mode: 'auto',
-      });
+    try {
+      const [info, currentBranch, diffResult] = await Promise.all([
+        gitService.getProjectInfo(),
+        gitService.getCurrentBranch(),
+        gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        prewarmTask,
+      ]);
+
+      setBranch(currentBranch);
+
+      const { diff: d } = diffResult;
       if (!d) {
         setError('No changes found for PR. Compare with base branch.');
         setDataLoading(false);
@@ -74,8 +89,17 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
       }
       setDiff(d);
 
+      // Save to temp file
+      const path = await gitService.saveDiffToTempFile(d);
+      setDiffPath(path);
+
+      const promptOptions = {
+        customInstructions: config.customInstructions,
+        projectContext: info ? `${info.name} at ${info.path}` : undefined,
+      };
+
       const template = await gitService.getPRTemplate();
-      const p = template ? PROMPTS.PR_WITH_TEMPLATE(template, d) : PROMPTS.PR_NO_TEMPLATE(d);
+      const p = template ? PROMPTS.PR_WITH_TEMPLATE(template, d, promptOptions) : PROMPTS.PR_NO_TEMPLATE(d, promptOptions);
       setPrompt(p);
 
       // Check cache
@@ -85,23 +109,34 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
         setLastGeneratedAt(cached.timestamp);
         setLastMetadata(cached.metadata ?? null);
         setIsCached(true);
+        setHasAttempted(true);
       }
     } catch (e: any) {
       setError(e.message || 'Error loading PR data');
     } finally {
       setDataLoading(false);
     }
-  }, [config.baseBranch, gitService, setError, setPrContent, setLastGeneratedAt, setLastMetadata]);
+  }, [
+    config.baseBranch,
+    gitService,
+    aiProvider,
+    setError,
+    setPrContent,
+    setLastGeneratedAt,
+    setLastMetadata,
+    setHasAttempted,
+    config.customInstructions,
+  ]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
-    if (prompt && !prContent && !internalLoading && !error && !isCached && !dataLoading) {
+    if (prompt && !prContent && !internalLoading && !error && !isCached && !dataLoading && !hasAttempted) {
       generate();
     }
-  }, [prompt, prContent, internalLoading, error, generate, isCached, dataLoading]);
+  }, [prompt, prContent, internalLoading, error, generate, isCached, dataLoading, hasAttempted]);
 
   useInput((input, _key) => {
     if (internalLoading || dataLoading || editing) return;
@@ -128,18 +163,33 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
   }
 
   const isActuallyLoading = internalLoading || dataLoading || (diff && !prContent && !error);
+  const showResult = !!prContent || (editing && !isActuallyLoading);
 
   return (
     <Box flexDirection='column' height='100%'>
       <Header />
 
-      {isActuallyLoading ? (
+      {internalLoading && !prContent && (
         <Box alignItems='center' flexDirection='column' flexGrow={1} justifyContent='center'>
-          <Text color='cyan'>
-            <Spinner type='dots' /> {loadingText}
-          </Text>
+          {!thought && (
+            <Text color='cyan'>
+              <Spinner type='dots' /> {loadingText}
+            </Text>
+          )}
+          {thought && (
+            <Box borderColor='blue' borderStyle='single' flexDirection='column' paddingX={2} paddingY={1} width='80%'>
+              <Text bold color='blue'>
+                AGENT PROGRESS
+              </Text>
+              <Box marginTop={1}>
+                <ScrollableBox autoScroll content={thought} maxHeight={8} width={Math.floor(_width * 0.8) - 4} />
+              </Box>
+            </Box>
+          )}
         </Box>
-      ) : (
+      )}
+
+      {showResult && (
         <Box flexDirection='column' flexGrow={1}>
           <Box justifyContent='space-between' marginBottom={1} paddingX={1} width='100%'>
             <Box gap={1}>
@@ -159,51 +209,61 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, onBack, 
             )}
           </Box>
 
-          <Box flexDirection={width > 90 ? 'row' : 'column'} flexGrow={1} gap={1}>
-            {/* Left Side: Diff Overview */}
-            {width > 60 && (
-              <ScrollableBox
-                borderColor='gray'
-                content={diff}
-                maxHeight={width > 90 ? (stdout?.rows || 20) - 10 : 8}
-                title='Diff Overview'
-                titleColor='gray'
-                width={width > 90 ? Math.floor(width * 0.4) : width}
-              />
-            )}
-
-            {/* Right Side: PR Content */}
-            {editing ? (
-              <Box
-                borderColor='blue'
-                borderStyle='round'
-                flexDirection='column'
-                flexGrow={1}
-                paddingX={1}
-                width={width > 90 ? '60%' : '100%'}
-              >
-                <Text bold color='cyan'>
-                  PR Description (Editing)
-                </Text>
-                <Box flexGrow={1} overflow='hidden'>
-                  <TextInput onChange={setPrContent} onSubmit={() => setEditing(false)} value={prContent} />
+          <Box flexDirection='column' flexGrow={1} gap={1}>
+            {/* PR Content - Full Width */}
+            <Box flexDirection='column' flexGrow={1} width='100%'>
+              {editing ? (
+                <Box borderColor='blue' borderStyle='round' flexDirection='column' flexGrow={1} paddingX={1}>
+                  <Text bold color='cyan'>
+                    PR Description (Editing)
+                  </Text>
+                  <Box flexGrow={1} overflow='hidden'>
+                    <TextInput onChange={setPrContent} onSubmit={() => setEditing(false)} value={prContent} />
+                  </Box>
                 </Box>
-              </Box>
-            ) : (
-              <ScrollableBox
-                borderColor='blue'
-                content={prContent}
-                maxHeight={width > 90 ? (stdout?.rows || 20) - 10 : 12}
-                title='PR Description'
-                titleColor='cyan'
-                width={width > 90 ? Math.floor(width * 0.58) : width}
-              />
-            )}
+              ) : (
+                <ScrollableBox
+                  borderColor='blue'
+                  content={prContent}
+                  maxHeight={(stdout?.rows || 20) - 10}
+                  title='PR Description'
+                  titleColor='cyan'
+                  width={(stdout?.columns || 80) - 4}
+                />
+              )}
+              {internalLoading && (
+                <Box flexDirection='column' marginTop={1} paddingX={1}>
+                  <Text color='yellow'>
+                    <Spinner type='dots' /> {thought ? 'Thinking/Acting...' : 'Streaming...'}
+                  </Text>
+                  {thought && (
+                    <Box marginTop={1}>
+                      <Text color='gray' dimColor italic>
+                        Latest:{' '}
+                        {thought
+                          .split('\n')
+                          .filter(Boolean)
+                          .pop()
+                          ?.slice(0, (stdout?.columns || 80) - 20)}
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
           </Box>
         </Box>
       )}
 
-      {!isActuallyLoading && !editing && (
+      {dataLoading && !prContent && (
+        <Box alignItems='center' flexDirection='column' flexGrow={1} justifyContent='center'>
+          <Text color='cyan'>
+            <Spinner type='dots' /> Loading data...
+          </Text>
+        </Box>
+      )}
+
+      {!internalLoading && !dataLoading && !editing && (
         <Box gap={2} justifyContent='center' marginTop={1}>
           <Text bold color='yellow'>
             [e] Edit Description

@@ -11,12 +11,18 @@ export const commitCommand = (configManager: ConfigManager, gitService: GitServi
     .option('-c, --copy', 'Copy output to clipboard')
     .action(async (options) => {
       const config = configManager.getMergedConfig(options);
+      const info = await gitService.getProjectInfo();
+      const promptOptions = {
+        customInstructions: config.customInstructions,
+        projectContext: info ? `${info.name} at ${info.path}` : undefined,
+      };
+
       await runActionWithDiff({
         action: 'commit',
         config,
         copy: options.copy,
         diffMode: 'auto',
-        getPrompt: (diff) => PROMPTS.COMMIT(diff),
+        getPrompt: (diff) => PROMPTS.COMMIT(diff, promptOptions),
         gitService,
         hintMessage: 'Use "gdraft tui" for interactive editing and committing.',
         successMessage: 'Generated Message',

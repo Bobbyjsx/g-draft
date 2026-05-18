@@ -1,8 +1,9 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, useApp, useInput } from 'ink';
 import type { Config, ConfigManager } from '../core/config.js';
 import type { GitService } from '../core/git.js';
+import { getProvider } from '../providers/index.js';
 import { StatusBar } from './components/StatusBar.js';
 import { CommitScreen } from './screens/Commit.js';
 import { Dashboard } from './screens/Dashboard.js';
@@ -24,13 +25,42 @@ interface AppProps {
 export const App: React.FC<AppProps> = ({ configManager, gitService, initialConfig }) => {
   const [screen, setScreen] = useState<Screen>('splash');
   const [config, setConfig] = useState<Config>(initialConfig);
+  const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  const { exit } = useApp();
+  useApp();
+
+  const aiProvider = useMemo(() => getProvider(config.provider), [config.provider]);
+
+  useEffect(() => {
+    gitService.getProjectInfo().then(setProjectInfo);
+
+    // Prewarm provider
+    if (aiProvider.prewarm) {
+      aiProvider.prewarm().catch(() => {
+        /* Silent fail for prewarm */
+      });
+    }
+
+    return () => {
+      if (aiProvider.dispose) {
+        aiProvider.dispose();
+      }
+    };
+  }, [gitService, aiProvider]);
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
-      setScreen('exit');
-      setTimeout(() => exit(), 1000);
+      const handleExit = async () => {
+        setScreen('exit');
+        if (aiProvider.dispose) {
+          await aiProvider.dispose();
+        }
+        // Small delay for UI to show exit screen before killing
+        setTimeout(() => {
+          process.exit(0);
+        }, 1200);
+      };
+      handleExit();
     }
 
     if (key.escape) {
@@ -46,13 +76,33 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
         return <Dashboard config={config} gitService={gitService} onSelect={setScreen} setLoading={setLoading} />;
       case 'commit':
         return (
-          <CommitScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />
+          <CommitScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
         );
       case 'pr':
-        return <PRScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />;
+        return (
+          <PRScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
+        );
       case 'review':
         return (
-          <ReviewScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />
+          <ReviewScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
         );
       case 'settings':
         return (
@@ -79,7 +129,7 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
         {renderScreen()}
       </Box>
       <Box marginTop={0} width='100%'>
-        <StatusBar loading={loading} screen={screen} />
+        <StatusBar loading={loading} projectInfo={projectInfo} screen={screen} />
       </Box>
     </Box>
   );

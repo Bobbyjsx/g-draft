@@ -6,7 +6,7 @@ import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
 import type { GitService } from '../../core/git.js';
 import { PROMPTS } from '../../core/prompts.js';
-import { getProvider } from '../../providers/index.js';
+import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
@@ -17,46 +17,72 @@ import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 interface ReviewScreenProps {
   gitService: GitService;
   config: Config;
+  aiProvider: AIProvider;
   onBack: () => void;
   setLoading: (loading: boolean) => void;
 }
 
-export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, onBack, setLoading }) => {
+export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [diff, setDiff] = useState<string>('');
+  const [diffPath, setDiffPath] = useState<string>('');
+  const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
-  const provider = useMemo(() => getProvider(config.provider), [config.provider]);
-  const prompt = useMemo(() => (diff ? PROMPTS.REVIEW(diff) : ''), [diff]);
+  const promptOptions = useMemo(
+    () => ({
+      customInstructions: config.customInstructions,
+      projectContext: projectInfo ? `${projectInfo.name} at ${projectInfo.path}` : undefined,
+    }),
+    [config.customInstructions, projectInfo]
+  );
+
+  const prompt = useMemo(() => (diff ? PROMPTS.REVIEW(diff, promptOptions) : ''), [diff, promptOptions]);
 
   const {
     generate,
     loading: internalLoading,
     error,
     result: review,
+    thought,
     setResult: setReview,
     setError,
+    hasAttempted,
+    setHasAttempted,
     lastGeneratedAt,
     setLastGeneratedAt,
   } = useAIGenerator({
     action: 'review',
     diff,
+    diffPath,
     prompt,
-    provider,
+    provider: aiProvider,
     setGlobalLoading: setLoading,
   });
 
   const loadingText = useLoadingMessages('review', internalLoading || dataLoading);
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
+  const _width = stdout?.columns || 80;
 
-  const loadDiff = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setDataLoading(true);
+    // Parallelize git info, diff loading, and AI pre-warming
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+
     try {
-      const { diff: d } = await gitService.getDiff({
-        baseBranch: config.baseBranch,
-        mode: 'auto',
-      });
+      const [info, diffResult] = await Promise.all([
+        gitService.getProjectInfo(),
+        gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        prewarmTask,
+      ]);
+
+      setProjectInfo(info);
+
+      const { diff: d } = diffResult;
       if (!d) {
         setError('No changes found to review.');
         setDataLoading(false);
@@ -64,29 +90,34 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
       }
       setDiff(d);
 
+      // Save to temp file
+      const path = await gitService.saveDiffToTempFile(d);
+      setDiffPath(path);
+
       // Check cache
       const cached = cacheManager.get('review');
       if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
         setReview(cached.content);
         setLastGeneratedAt(cached.timestamp);
         setIsCached(true);
+        setHasAttempted(true);
       }
     } catch (e: any) {
       setError(e.message || 'Error loading diff');
     } finally {
       setDataLoading(false);
     }
-  }, [config.baseBranch, gitService, setError, setReview, setLastGeneratedAt]);
+  }, [config.baseBranch, gitService, aiProvider, setError, setReview, setLastGeneratedAt, setHasAttempted]);
 
   useEffect(() => {
-    loadDiff();
-  }, [loadDiff]);
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
-    if (diff && !review && !internalLoading && !error && !isCached && !dataLoading) {
+    if (diff && !review && !internalLoading && !error && !isCached && !dataLoading && !hasAttempted) {
       generate();
     }
-  }, [diff, review, internalLoading, error, generate, isCached, dataLoading]);
+  }, [diff, review, internalLoading, error, generate, isCached, dataLoading, hasAttempted]);
 
   useInput((input, _key) => {
     if (internalLoading || dataLoading) return;
@@ -104,26 +135,41 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
         onQuit={() => process.exit()}
         onRetry={() => {
           setError(null);
-          if (!diff) loadDiff();
+          if (!diff) loadData();
           else generate();
         }}
       />
     );
   }
 
-  const isActuallyLoading = internalLoading || dataLoading || (diff && !review && !error);
+  const _isActuallyLoading = internalLoading || dataLoading || (diff && !review && !error);
+  const showResult = !!review;
 
   return (
     <Box flexDirection='column' gap={1} height='100%'>
       <Header />
 
-      {isActuallyLoading ? (
+      {internalLoading && !review && (
         <Box alignItems='center' flexDirection='column' flexGrow={1} justifyContent='center'>
-          <Text color='cyan'>
-            <Spinner type='dots' /> {loadingText}
-          </Text>
+          {!thought && (
+            <Text color='cyan'>
+              <Spinner type='dots' /> {loadingText}
+            </Text>
+          )}
+          {thought && (
+            <Box borderColor='magenta' borderStyle='single' flexDirection='column' paddingX={2} paddingY={1} width='80%'>
+              <Text bold color='magenta'>
+                AGENT PROGRESS
+              </Text>
+              <Box marginTop={1}>
+                <ScrollableBox autoScroll content={thought} maxHeight={8} width={Math.floor(_width * 0.8) - 4} />
+              </Box>
+            </Box>
+          )}
         </Box>
-      ) : (
+      )}
+
+      {showResult && (
         <Box flexDirection='column' flexGrow={1}>
           <Box justifyContent='space-between' marginBottom={1} paddingX={1} width='100%'>
             <Text bold color='magenta'>
@@ -143,10 +189,37 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
             titleColor='magenta'
             width={(stdout?.columns || 80) - 4}
           />
+          {internalLoading && (
+            <Box flexDirection='column' marginTop={1} paddingX={1}>
+              <Text color='yellow'>
+                <Spinner type='dots' /> {thought ? 'Thinking/Acting...' : 'Streaming...'}
+              </Text>
+              {thought && (
+                <Box marginTop={1}>
+                  <Text color='gray' dimColor italic>
+                    Latest:{' '}
+                    {thought
+                      .split('\n')
+                      .filter(Boolean)
+                      .pop()
+                      ?.slice(0, (stdout?.columns || 80) - 20)}
+                  </Text>
+                </Box>
+              )}
+            </Box>
+          )}
         </Box>
       )}
 
-      {!isActuallyLoading && (
+      {dataLoading && !review && (
+        <Box alignItems='center' flexDirection='column' flexGrow={1} justifyContent='center'>
+          <Text color='cyan'>
+            <Spinner type='dots' /> Loading data...
+          </Text>
+        </Box>
+      )}
+
+      {!internalLoading && !dataLoading && (
         <Box gap={2} justifyContent='center' marginTop={1}>
           <Text bold color='cyan'>
             [c] {copied ? 'Copied!' : 'Copy'}

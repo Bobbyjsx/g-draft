@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface LoadingContext {
   mode?: string;
@@ -49,18 +49,12 @@ const LOADING_MESSAGES: Record<string, string[] | MessageGenerator> = {
 export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: boolean, context?: LoadingContext) => {
   const [index, setIndex] = useState(0);
 
-  const getMessages = () => {
+  const getMessages = useCallback(() => {
     const entry = LOADING_MESSAGES[type];
     return typeof entry === 'function' ? entry(context) : entry;
-  };
+  }, [type, context]);
 
-  const [messages, setMessages] = useState<string[]>(getMessages());
-
-  useEffect(() => {
-    if (isActive) {
-      setMessages(getMessages());
-    }
-  }, [isActive, type, context?.mode, context?.branch]);
+  const messages = getMessages();
 
   useEffect(() => {
     if (!isActive) {
@@ -69,7 +63,6 @@ export const useLoadingMessages = (type: 'commit' | 'pr' | 'review', isActive: b
     }
 
     const interval = setInterval(() => {
-      // Randomize selection as requested, but try not to show the same twice in a row if multiple exist
       setIndex((prev) => {
         if (messages.length <= 1) return 0;
         let next = Math.floor(Math.random() * messages.length);

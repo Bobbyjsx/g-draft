@@ -8,6 +8,7 @@ interface UseAIGeneratorOptions {
   provider: AIProvider;
   prompt: string;
   diff?: string;
+  diffPath?: string;
   metadata?: Record<string, unknown>;
   onSuccess?: (response: string, metadata?: Record<string, unknown>) => void;
   onError?: (error: string) => void;
@@ -19,6 +20,7 @@ export const useAIGenerator = ({
   provider,
   prompt,
   diff,
+  diffPath,
   metadata,
   onSuccess,
   onError,
@@ -27,8 +29,10 @@ export const useAIGenerator = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string>('');
+  const [thought, setThought] = useState<string>('');
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
   const [lastMetadata, setLastMetadata] = useState<Record<string, unknown> | null>(null);
+  const [hasAttempted, setHasAttempted] = useState(false);
 
   const generate = useCallback(async () => {
     if (!prompt) return;
@@ -36,14 +40,42 @@ export const useAIGenerator = ({
     setLoading(true);
     setGlobalLoading(true);
     setError(null);
+    setResult('');
+    setThought('');
+    setHasAttempted(true);
+
+    const startTime = Date.now();
+    let fullResponse = '';
+    let fullThought = '';
+    let streamError: string | null = null;
 
     try {
       if (!(await provider.isAvailable())) {
         throw new Error(`Provider ${provider.name} not found. ${provider.installGuide}`);
       }
 
-      const res = await provider.run(prompt);
-      setResult(res);
+      await provider.stream(
+        prompt,
+        {
+          onError: (err) => {
+            streamError = err;
+            setError(err);
+          },
+          onText: (text) => {
+            fullResponse += text;
+            setResult((prev) => prev + text);
+          },
+          onThought: (t) => {
+            fullThought += t;
+            setThought((prev) => prev + t);
+          },
+        },
+        diffPath
+      );
+
+      if (streamError) {
+        throw new Error(streamError);
+      }
 
       const timestamp = new Date().toISOString();
       setLastGeneratedAt(timestamp);
@@ -52,7 +84,7 @@ export const useAIGenerator = ({
       // Save to cache
       if (diff) {
         cacheManager.set(action, {
-          content: res,
+          content: fullResponse,
           diffHash: cacheManager.generateDiffHash(diff),
           metadata,
           timestamp,
@@ -61,19 +93,24 @@ export const useAIGenerator = ({
 
       logger.logAction({
         action,
+        durationMs: Date.now() - startTime,
+        model: provider.getModel?.(),
         prompt,
-        response: res,
+        response: fullResponse,
         status: 'success',
+        thought: fullThought,
       });
 
-      onSuccess?.(res, metadata);
+      onSuccess?.(fullResponse, metadata);
     } catch (e: any) {
       const msg = e.message || `Error generating ${action}`;
       setError(msg);
 
       logger.logAction({
         action,
+        durationMs: Date.now() - startTime,
         error: msg,
+        model: provider.getModel?.(),
         prompt,
         response: '',
         status: 'error',
@@ -84,18 +121,21 @@ export const useAIGenerator = ({
       setLoading(false);
       setGlobalLoading(false);
     }
-  }, [action, provider, prompt, diff, metadata, onSuccess, onError, setGlobalLoading]);
+  }, [action, provider, prompt, diff, diffPath, metadata, onSuccess, onError, setGlobalLoading]);
 
   return {
     error,
     generate,
+    hasAttempted,
     lastGeneratedAt,
     lastMetadata,
     loading,
     result,
     setError,
+    setHasAttempted,
     setLastGeneratedAt,
     setLastMetadata,
     setResult,
+    thought,
   };
 };

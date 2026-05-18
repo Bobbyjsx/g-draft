@@ -1,8 +1,14 @@
 # CLI Usage Reference
 
-`gdraft` provides a powerful CLI for fast, non-interactive workflows. For an interactive experience, use `gdraft tui`.
+## High-Performance CLI
+`gdraft` is optimized for speed in detached (one-shot) mode. It uses **ACP Handshake Pipelining** to eliminate initialization round-trips, allowing the AI to start generating almost immediately after the process spawns.
 
-## Global Options
+### Real-Time Spinner Feedback
+During generation, the CLI spinner text is updated in real-time with the agent's **last three thought process lines**. This provides visibility into the agent's reasoning (e.g., which files it's analyzing or which tools it's using) without cluttering the final output. Once generation is complete, intermediate thoughts are cleared to keep your terminal clean.
+
+---
+
+## Commands
 
 The following options are available for most commands:
 
@@ -108,6 +114,16 @@ Initialize a `.gdraft.json` configuration file in the current directory.
 ```bash
 gdraft init
 ```
+
+---
+
+## Performance Monitoring & Telemetry
+`gdraft` now captures detailed performance metrics for every generation. These metrics are stored in the project's local log files to help you optimize your workflow and understand AI latency.
+
+- **`durationMs`**: The exact time in milliseconds the AI provider took to process the request, from initial prompt to the final character of the response.
+- **`model`**: The specific model identifier returned by the provider (e.g., `gemini-3-flash`), allowing you to track which models are being routed for specific tasks.
+
+You can find these metrics in the JSON log files at `~/.gdraft/projects/[project-id]/logs/`.
 
 ---
 

@@ -7,7 +7,7 @@ import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
 import { GitService } from '../../core/git.js';
 import { PROMPTS } from '../../core/prompts.js';
-import { getProvider } from '../../providers/index.js';
+import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
@@ -18,28 +18,42 @@ import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 interface CommitScreenProps {
   gitService: GitService;
   config: Config;
+  aiProvider: AIProvider;
   onBack: () => void;
   setLoading: (loading: boolean) => void;
 }
 
-export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, onBack, setLoading }) => {
+export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, aiProvider, onBack, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'committing' | 'done'>('idle');
   const [diff, setDiff] = useState<string>('');
+  const [diffPath, setDiffPath] = useState<string>('');
+  const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [mode, setMode] = useState<string>('staged');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
-  const provider = useMemo(() => getProvider(config.provider), [config.provider]);
-  const prompt = useMemo(() => (diff ? PROMPTS.COMMIT(diff) : ''), [diff]);
+  const metadata = useMemo(() => ({ mode }), [mode]);
+  const promptOptions = useMemo(
+    () => ({
+      customInstructions: config.customInstructions,
+      projectContext: projectInfo ? `${projectInfo.name} at ${projectInfo.path}` : undefined,
+    }),
+    [config.customInstructions, projectInfo]
+  );
+
+  const prompt = useMemo(() => (diff ? PROMPTS.COMMIT(diff, promptOptions) : ''), [diff, promptOptions]);
 
   const {
     generate,
     loading: internalLoading,
     error,
     result: message,
+    thought,
     setResult: setMessage,
     setError,
+    hasAttempted,
+    setHasAttempted,
     lastGeneratedAt,
     setLastGeneratedAt,
     lastMetadata,
@@ -47,9 +61,10 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   } = useAIGenerator({
     action: 'commit',
     diff,
-    metadata: { mode },
+    diffPath,
+    metadata,
     prompt,
-    provider,
+    provider: aiProvider,
     setGlobalLoading: setLoading,
   });
 
@@ -57,10 +72,24 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
 
-  const loadDiff = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setDataLoading(true);
+    // Parallelize git info, diff loading, and AI pre-warming
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+
     try {
-      const { diff: d, mode: m } = await gitService.getDiff({ mode: 'staged' });
+      const [info, diffResult] = await Promise.all([
+        gitService.getProjectInfo(),
+        gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        prewarmTask,
+      ]);
+
+      setProjectInfo(info);
+
+      const { diff: d, mode: m } = diffResult;
       if (!d) {
         setError('No changes found. Stage some files first or ensure there are changes.');
         setDataLoading(false);
@@ -69,6 +98,10 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
       setDiff(d);
       setMode(m);
 
+      // Save to temp file for vendor processing
+      const path = await gitService.saveDiffToTempFile(d);
+      setDiffPath(path);
+
       // Check cache
       const cached = cacheManager.get('commit');
       if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
@@ -76,24 +109,25 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
         setLastGeneratedAt(cached.timestamp);
         setLastMetadata(cached.metadata ?? null);
         setIsCached(true);
+        setHasAttempted(true);
       }
     } catch (e: any) {
       setError(e.message || 'Error loading diff');
     } finally {
       setDataLoading(false);
     }
-  }, [gitService, setError, setMessage, setLastGeneratedAt, setLastMetadata]);
+  }, [gitService, aiProvider, setError, setMessage, setLastGeneratedAt, setLastMetadata, setHasAttempted, config.baseBranch]);
 
   useEffect(() => {
-    loadDiff();
-  }, [loadDiff]);
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
-    // Only auto-generate if no cache was found
-    if (diff && !message && !internalLoading && !error && !isCached && !dataLoading) {
+    // Only auto-generate if no cache was found and we haven't attempted yet
+    if (diff && !message && !internalLoading && !error && !isCached && !dataLoading && !hasAttempted) {
       generate();
     }
-  }, [diff, message, internalLoading, error, generate, isCached, dataLoading]);
+  }, [diff, message, internalLoading, error, generate, isCached, dataLoading, hasAttempted]);
 
   useInput((input, _key) => {
     if (internalLoading || dataLoading || editing || status !== 'idle') return;
@@ -135,7 +169,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
         onQuit={() => process.exit()}
         onRetry={() => {
           setError(null);
-          if (!diff) loadDiff();
+          if (!diff) loadData();
           else generate();
         }}
       />
@@ -157,6 +191,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   }
 
   const isActuallyLoading = internalLoading || dataLoading || (diff && !message && !error);
+  const showResult = !!message || (editing && !isActuallyLoading);
 
   return (
     <Box flexDirection='column' gap={1}>
@@ -168,43 +203,94 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
             <Text bold color='cyan'>
               Generated Commit Message
             </Text>
-            {Boolean(!isActuallyLoading && lastMetadata?.mode) && (
+            {Boolean(!dataLoading && lastMetadata?.mode) && (
               <Text color='gray' dimColor italic>
                 ({GitService.formatMode(lastMetadata?.mode as string)})
               </Text>
             )}
           </Box>
 
-          {!isActuallyLoading && lastGeneratedAt && (
+          {!dataLoading && lastGeneratedAt && (
             <Text color='gray' dimColor italic>
               {isCached ? 'Loaded from cache' : 'Generated'} at {new Date(lastGeneratedAt).toLocaleTimeString()}
             </Text>
           )}
         </Box>
 
-        {isActuallyLoading ? (
+        {internalLoading && !message && (
           <Box borderColor='cyan' borderStyle='single' flexDirection='column' marginY={1} paddingX={1}>
-            <Text color='yellow'>
-              <Spinner type='dots' /> {loadingText}
+            {!thought && (
+              <Text color='yellow'>
+                <Spinner type='dots' /> {loadingText}
+              </Text>
+            )}
+            {thought && (
+              <Box flexDirection='column'>
+                <Box marginBottom={1}>
+                  <Text color='cyan' dimColor>
+                    AGENT PROGRESS
+                  </Text>
+                </Box>
+                <ScrollableBox autoScroll content={thought} maxHeight={6} width={(stdout?.columns || 80) - 8} />
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {showResult && (
+          <>
+            {editing ? (
+              <Box
+                borderColor='cyan'
+                borderStyle='single'
+                flexDirection='column'
+                paddingX={1}
+                width={(stdout?.columns || 80) - 4}
+              >
+                <Box paddingY={1}>
+                  <TextInput onChange={setMessage} onSubmit={() => setEditing(false)} value={message} />
+                </Box>
+              </Box>
+            ) : (
+              <ScrollableBox
+                borderColor='cyan'
+                content={message}
+                maxHeight={(stdout?.rows || 20) - 14}
+                width={(stdout?.columns || 80) - 4}
+              />
+            )}
+            {internalLoading && (
+              <Box flexDirection='column' marginTop={1} paddingX={1}>
+                <Text color='yellow'>
+                  <Spinner type='dots' /> {thought ? 'Thinking/Acting...' : 'Streaming Response...'}
+                </Text>
+                {thought && (
+                  <Box marginTop={1}>
+                    <Text color='gray' dimColor italic>
+                      Latest:{' '}
+                      {thought
+                        .split('\n')
+                        .filter(Boolean)
+                        .pop()
+                        ?.slice(0, (stdout?.columns || 80) - 20)}
+                    </Text>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </>
+        )}
+
+        {dataLoading && !message && (
+          <Box paddingX={1}>
+            <Text color='cyan'>
+              <Spinner type='dots' /> Loading data...
             </Text>
           </Box>
-        ) : editing ? (
-          <Box borderColor='cyan' borderStyle='single' flexDirection='column' paddingX={1} width={(stdout?.columns || 80) - 4}>
-            <Box paddingY={1}>
-              <TextInput onChange={setMessage} onSubmit={() => setEditing(false)} value={message} />
-            </Box>
-          </Box>
-        ) : (
-          <ScrollableBox
-            borderColor='cyan'
-            content={message}
-            maxHeight={(stdout?.rows || 20) - 12}
-            width={(stdout?.columns || 80) - 4}
-          />
         )}
       </Box>
 
-      {!isActuallyLoading && !editing && status === 'idle' && (
+      {!internalLoading && !dataLoading && !editing && status === 'idle' && (
         <Box gap={2} justifyContent='center' marginTop={1}>
           <Text bold color='green'>
             [a] Accept & Commit

@@ -13,12 +13,18 @@ export const reviewCommand = (configManager: ConfigManager, gitService: GitServi
     .option('-c, --copy', 'Copy output to clipboard')
     .action(async (options) => {
       const config = configManager.getMergedConfig(options);
+      const info = await gitService.getProjectInfo();
+      const promptOptions = {
+        customInstructions: config.customInstructions,
+        projectContext: info ? `${info.name} at ${info.path}` : undefined,
+      };
+
       await runActionWithDiff({
         action: 'review',
         config,
         copy: options.copy,
         diffMode: options.mode as any,
-        getPrompt: (diff) => PROMPTS.REVIEW(diff),
+        getPrompt: (diff) => PROMPTS.REVIEW(diff, promptOptions),
         gitService,
         successMessage: 'AI Review Results',
       });
