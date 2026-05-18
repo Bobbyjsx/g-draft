@@ -117,6 +117,16 @@ gdraft init
 
 ---
 
+## Performance Monitoring & Telemetry
+`gdraft` now captures detailed performance metrics for every generation. These metrics are stored in the project's local log files to help you optimize your workflow and understand AI latency.
+
+- **`durationMs`**: The exact time in milliseconds the AI provider took to process the request, from initial prompt to the final character of the response.
+- **`model`**: The specific model identifier returned by the provider (e.g., `gemini-3-flash`), allowing you to track which models are being routed for specific tasks.
+
+You can find these metrics in the JSON log files at `~/.gdraft/projects/[project-id]/logs/`.
+
+---
+
 ## Caching & History
 All CLI generations (commit messages, PRs, reviews) are automatically saved to your project's history in `~/.gdraft/`. 
 
