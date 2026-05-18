@@ -1,9 +1,11 @@
 import path from 'node:path';
+import { PostHog } from 'posthog-node';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import { Logger } from '../src/core/logger.js';
 
 vi.mock('node:fs/promises');
+vi.mock('posthog-node');
 vi.mock('../src/core/paths.js', () => ({
   paths: {
     getLogsDir: () => '/mock/logs',
@@ -29,6 +31,32 @@ describe('Logger', () => {
     expect(fs.mkdir).toHaveBeenCalledWith(path.join('/mock/logs', 'test-action'), { recursive: true });
     expect(fs.writeFile).toHaveBeenCalled();
     expect(fs.appendFile).toHaveBeenCalled();
+  });
+
+  it('should capture event to PostHog when initialized', async () => {
+    const logger = new Logger();
+    const config = {
+      posthogApiKey: 'test-key',
+      posthogHost: 'https://test.com',
+      userId: 'test-user',
+    } as any;
+
+    logger.init(config);
+    const mockPostHog = vi.mocked(PostHog).mock.instances[0];
+
+    await logger.logAction({
+      action: 'test',
+      prompt: 'p',
+      response: 'r',
+      status: 'success',
+    });
+
+    expect(mockPostHog.capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: 'test-user',
+        event: 'generation_success',
+      })
+    );
   });
 
   it('should deduplicate consecutive identical errors', async () => {

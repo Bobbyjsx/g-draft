@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { PostHog } from 'posthog-node';
 import type { Config } from './config.js';
@@ -25,9 +26,18 @@ export class Logger {
   private lastLoggedError: string | null = null;
   private posthog: PostHog | null = null;
   private userId: string | null = null;
+  private envMetadata: Record<string, any> = {};
 
   init(config: Config) {
     this.userId = config.userId;
+    this.envMetadata = {
+      is_tmux: Boolean(process.env.TMUX),
+      node_version: process.version,
+      os: os.platform(),
+      os_release: os.release(),
+      terminal: process.env.TERM_PROGRAM || process.env.TERM || 'unknown',
+    };
+
     if (config.posthogApiKey) {
       this.posthog = new PostHog(config.posthogApiKey, {
         host: config.posthogHost,
@@ -74,6 +84,7 @@ export class Logger {
             error: entry.error,
             model: entry.model,
             status: entry.status,
+            ...this.envMetadata,
           },
         });
       }
