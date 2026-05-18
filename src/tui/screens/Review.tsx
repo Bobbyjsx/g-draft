@@ -22,7 +22,7 @@ interface ReviewScreenProps {
   setLoading: (loading: boolean) => void;
 }
 
-export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, aiProvider, onBack, setLoading }) => {
+export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [diff, setDiff] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
@@ -68,7 +68,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     // Parallelize git info, diff loading, and AI pre-warming
-    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('auto-gemini-3') : Promise.resolve();
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
 
     try {
       const [info, diffResult] = await Promise.all([

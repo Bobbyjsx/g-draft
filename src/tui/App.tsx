@@ -27,7 +27,7 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
   const [config, setConfig] = useState<Config>(initialConfig);
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  const { exit } = useApp();
+  useApp();
 
   const aiProvider = useMemo(() => getProvider(config.provider), [config.provider]);
 
@@ -50,9 +50,17 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
-      if (aiProvider.dispose) aiProvider.dispose();
-      setScreen('exit');
-      setTimeout(() => exit(), 1000);
+      const handleExit = async () => {
+        setScreen('exit');
+        if (aiProvider.dispose) {
+          await aiProvider.dispose();
+        }
+        // Small delay for UI to show exit screen before killing
+        setTimeout(() => {
+          process.exit(0);
+        }, 1200);
+      };
+      handleExit();
     }
 
     if (key.escape) {

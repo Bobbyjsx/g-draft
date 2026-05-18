@@ -180,12 +180,28 @@ export class GeminiProvider extends BaseProvider {
 
   async dispose(): Promise<void> {
     if (this.child) {
-      this.child.kill();
+      try {
+        this.child.kill('SIGKILL');
+      } catch (_e) {
+        /* Ignore */
+      }
       this.child = null;
-      this.sessionId = null;
-      this.isPrewarming = false;
-      this.prewarmPromise = null;
     }
+    this.sessionId = null;
+    this.isPrewarming = false;
+    this.prewarmPromise = null;
+    this.turnFinished = false;
+    this.isTyping = false;
+    this.thoughtQueue = [];
+    this.pendingRequests.forEach((p) => {
+      p.reject(new Error('Provider disposed'));
+    });
+    this.pendingRequests.clear();
+    if (this.streamResolver) {
+      this.streamResolver();
+      this.streamResolver = null;
+    }
+    this.streamRejecter = null;
   }
 
   private setupListeners() {
@@ -248,16 +264,17 @@ export class GeminiProvider extends BaseProvider {
       if (code !== 0 && this.streamRejecter) {
         this.streamRejecter(new Error(this.stderr || `Process exited with code ${code}`));
       } else if (this.streamResolver) {
-        if (!this.isTyping) this.streamResolver();
+        this.streamResolver();
       }
-      this.child = null;
-      this.sessionId = null;
-      this.isPrewarming = false;
-      this.prewarmPromise = null;
+      this.dispose();
     });
 
     this.child.on('error', (err: any) => {
-      this.streamRejecter?.(err);
+      if (this.streamRejecter) {
+        this.streamRejecter(err);
+      } else if (this.streamResolver) {
+        this.streamResolver();
+      }
       this.dispose();
     });
   }
@@ -283,7 +300,21 @@ export class GeminiProvider extends BaseProvider {
     if (!this.child) throw new Error('Provider not initialized');
     const id = this.requestId++;
     const promise = new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { reject, resolve });
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`Request ${method} (id: ${id}) timed out after 30s`));
+      }, 30000);
+
+      this.pendingRequests.set(id, {
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+        resolve: (val) => {
+          clearTimeout(timeout);
+          resolve(val);
+        },
+      });
     });
     this.child.stdin?.write(`${JSON.stringify({ id, jsonrpc: '2.0', method, params })}\n`);
     return promise;
@@ -361,9 +392,16 @@ export class GeminiProvider extends BaseProvider {
           }
           await streamPromise;
         } catch (err) {
-          this.streamRejecter?.(err);
+          if (this.streamRejecter) {
+            this.streamRejecter(err);
+          }
           await this.dispose();
           throw err;
+        } finally {
+          this.currentHandlers = null;
+          this.streamResolver = null;
+          this.streamRejecter = null;
+          this.turnFinished = false;
         }
         return;
       }
