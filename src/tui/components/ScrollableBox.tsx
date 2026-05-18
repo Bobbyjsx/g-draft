@@ -12,6 +12,7 @@ interface ScrollableBoxProps {
   borderStyle?: 'single' | 'double' | 'round' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic';
   title?: string;
   titleColor?: string;
+  autoScroll?: boolean;
 }
 
 export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
@@ -23,6 +24,7 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
   borderStyle = 'round',
   title,
   titleColor = 'white',
+  autoScroll = false,
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
 
@@ -46,11 +48,17 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
   const visibleHeight = finalHeight - borderOverhead - titleOverhead;
   const maxScroll = Math.max(0, lines.length - visibleHeight);
 
+  // Auto-scroll logic
   useEffect(() => {
-    setScrollTop(0);
-  }, [content]);
+    if (autoScroll && maxScroll > 0) {
+      setScrollTop(maxScroll);
+    }
+  }, [maxScroll, autoScroll]); // Added content to dependencies to be sure
 
   useInput((input, key) => {
+    // Only handle input if this box is scrollable
+    if (maxScroll <= 0) return;
+
     // Basic Navigation
     if (key.upArrow || input === 'k') {
       setScrollTop((prev) => Math.max(0, prev - 1));
@@ -76,7 +84,11 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
     }
   });
 
-  const visibleLines = lines.slice(scrollTop, scrollTop + visibleHeight);
+  const visibleLines = useMemo(() => {
+    // Ensure scrollTop is valid (in case maxScroll changed)
+    const effectiveScrollTop = Math.min(scrollTop, maxScroll);
+    return lines.slice(effectiveScrollTop, effectiveScrollTop + visibleHeight);
+  }, [lines, scrollTop, maxScroll, visibleHeight]);
 
   // Scrollbar calculation
   const scrollbarHeight = Math.max(0, visibleHeight);

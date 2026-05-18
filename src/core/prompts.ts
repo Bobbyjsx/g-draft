@@ -10,6 +10,7 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
+    CURRENT ACTION: Generating a Commit Message
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Generate a Conventional Commit message from this diff.
@@ -27,6 +28,7 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
+    CURRENT ACTION: Generating a Pull Request Description
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Generate a structured Pull Request description from this diff.
@@ -50,6 +52,7 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
+    CURRENT ACTION: Filling a Pull Request Template
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Fill this PR template using the provided diff.
@@ -78,6 +81,7 @@ export const PROMPTS = {
     `
     ${PROMPTS.SYSTEM}
 
+    CURRENT ACTION: Performing a Code Review (Audit)
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
     Perform a rigorous code review on this diff.

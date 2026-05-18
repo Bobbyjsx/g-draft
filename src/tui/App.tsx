@@ -1,8 +1,9 @@
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, useApp, useInput } from 'ink';
 import type { Config, ConfigManager } from '../core/config.js';
 import type { GitService } from '../core/git.js';
+import { getProvider } from '../providers/index.js';
 import { StatusBar } from './components/StatusBar.js';
 import { CommitScreen } from './screens/Commit.js';
 import { Dashboard } from './screens/Dashboard.js';
@@ -28,12 +29,28 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
   const [loading, setLoading] = useState(false);
   const { exit } = useApp();
 
+  const aiProvider = useMemo(() => getProvider(config.provider), [config.provider]);
+
   useEffect(() => {
     gitService.getProjectInfo().then(setProjectInfo);
-  }, [gitService]);
+
+    // Prewarm provider
+    if (aiProvider.prewarm) {
+      aiProvider.prewarm().catch(() => {
+        /* Silent fail for prewarm */
+      });
+    }
+
+    return () => {
+      if (aiProvider.dispose) {
+        aiProvider.dispose();
+      }
+    };
+  }, [gitService, aiProvider]);
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
+      if (aiProvider.dispose) aiProvider.dispose();
       setScreen('exit');
       setTimeout(() => exit(), 1000);
     }
@@ -51,13 +68,33 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
         return <Dashboard config={config} gitService={gitService} onSelect={setScreen} setLoading={setLoading} />;
       case 'commit':
         return (
-          <CommitScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />
+          <CommitScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
         );
       case 'pr':
-        return <PRScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />;
+        return (
+          <PRScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
+        );
       case 'review':
         return (
-          <ReviewScreen config={config} gitService={gitService} onBack={() => setScreen('dashboard')} setLoading={setLoading} />
+          <ReviewScreen
+            aiProvider={aiProvider}
+            config={config}
+            gitService={gitService}
+            onBack={() => setScreen('dashboard')}
+            setLoading={setLoading}
+          />
         );
       case 'settings':
         return (
