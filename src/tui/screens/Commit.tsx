@@ -7,7 +7,7 @@ import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
 import { GitService } from '../../core/git.js';
 import { PROMPTS } from '../../core/prompts.js';
-import { getProvider } from '../../providers/index.js';
+import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
@@ -18,11 +18,12 @@ import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 interface CommitScreenProps {
   gitService: GitService;
   config: Config;
+  aiProvider: AIProvider;
   onBack: () => void;
   setLoading: (loading: boolean) => void;
 }
 
-export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, onBack, setLoading }) => {
+export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, aiProvider, onBack, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'committing' | 'done'>('idle');
   const [diff, setDiff] = useState<string>('');
@@ -32,7 +33,6 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
-  const provider = useMemo(() => getProvider(config.provider), [config.provider]);
   const metadata = useMemo(() => ({ mode }), [mode]);
   const promptOptions = useMemo(
     () => ({
@@ -64,7 +64,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     diffPath,
     metadata,
     prompt,
-    provider,
+    provider: aiProvider,
     setGlobalLoading: setLoading,
   });
 
@@ -72,16 +72,24 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
 
-  const loadDiff = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setDataLoading(true);
+    // Parallelize git info, diff loading, and AI pre-warming
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+
     try {
-      const info = await gitService.getProjectInfo();
+      const [info, diffResult] = await Promise.all([
+        gitService.getProjectInfo(),
+        gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        prewarmTask,
+      ]);
+
       setProjectInfo(info);
 
-      const { diff: d, mode: m } = await gitService.getDiff({
-        baseBranch: config.baseBranch,
-        mode: 'auto',
-      });
+      const { diff: d, mode: m } = diffResult;
       if (!d) {
         setError('No changes found. Stage some files first or ensure there are changes.');
         setDataLoading(false);
@@ -108,11 +116,11 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     } finally {
       setDataLoading(false);
     }
-  }, [gitService, setError, setMessage, setLastGeneratedAt, setLastMetadata, setHasAttempted, config.baseBranch]);
+  }, [gitService, aiProvider, setError, setMessage, setLastGeneratedAt, setLastMetadata, setHasAttempted, config.baseBranch]);
 
   useEffect(() => {
-    loadDiff();
-  }, [loadDiff]);
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     // Only auto-generate if no cache was found and we haven't attempted yet
@@ -161,7 +169,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
         onQuit={() => process.exit()}
         onRetry={() => {
           setError(null);
-          if (!diff) loadDiff();
+          if (!diff) loadData();
           else generate();
         }}
       />
@@ -211,14 +219,19 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
 
         {internalLoading && !message && (
           <Box borderColor='cyan' borderStyle='single' flexDirection='column' marginY={1} paddingX={1}>
-            <Text color='yellow'>
-              <Spinner type='dots' /> {loadingText}
-            </Text>
+            {!thought && (
+              <Text color='yellow'>
+                <Spinner type='dots' /> {loadingText}
+              </Text>
+            )}
             {thought && (
-              <Box marginTop={1}>
-                <Text color='gray' italic>
-                  Thinking: {thought.length > 100 ? `${thought.slice(0, 100)}...` : thought}
-                </Text>
+              <Box flexDirection='column'>
+                <Box marginBottom={1}>
+                  <Text color='cyan' dimColor>
+                    AGENT PROGRESS
+                  </Text>
+                </Box>
+                <ScrollableBox autoScroll content={thought} maxHeight={6} width={(stdout?.columns || 80) - 8} />
               </Box>
             )}
           </Box>
@@ -242,15 +255,27 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
               <ScrollableBox
                 borderColor='cyan'
                 content={message}
-                maxHeight={(stdout?.rows || 20) - 12}
+                maxHeight={(stdout?.rows || 20) - 14}
                 width={(stdout?.columns || 80) - 4}
               />
             )}
             {internalLoading && (
-              <Box paddingX={1}>
+              <Box flexDirection='column' marginTop={1} paddingX={1}>
                 <Text color='yellow'>
-                  <Spinner type='dots' /> {thought ? 'Thinking...' : 'Streaming...'}
+                  <Spinner type='dots' /> {thought ? 'Thinking/Acting...' : 'Streaming Response...'}
                 </Text>
+                {thought && (
+                  <Box marginTop={1}>
+                    <Text color='gray' dimColor italic>
+                      Latest:{' '}
+                      {thought
+                        .split('\n')
+                        .filter(Boolean)
+                        .pop()
+                        ?.slice(0, (stdout?.columns || 80) - 20)}
+                    </Text>
+                  </Box>
+                )}
               </Box>
             )}
           </>

@@ -31,23 +31,26 @@ gdraft review          # Run AI code review on current changes
 
 ---
 
-## ✨ Key Features
+### ✨ Key Features
 
 ### 🤖 AI-Powered Workflow
 - **Conventional Commits**: Automatically generates structured, present-tense commit messages (≤ 72 chars) from your staged changes.
 - **Context-Aware PRs**: Generates detailed Pull Request descriptions. Automatically detects and fills your project's `.github/pull_request_template.md`.
-- **Expert Code Review**: Performs rigorous audits using internalized **Skills** for:
-    - 🔒 **Security**: Scans for injection vectors, hardcoded secrets, and auth risks.
-    - ⚡ **Performance**: Identifies algorithmic inefficiencies and resource leaks.
-    - 🧼 **Clean Code**: Enforces SRP, DRY, and naming consistency.
-    - ♻️ **Abstractions**: Identifies code repetitions and suggests helper functions or components.
+- **Expert Code Review**: Performs rigorous audits using internalized **Skills** for Security, Performance, and Clean Code.
+- **Action-Aware Prompts**: The AI is explicitly aware of the current task (commit vs. review), enabling targeted custom instructions like "For commits, include issue-ID".
+
+### 🏎️ Instant Generations (Sub-2s)
+- **Persistent Background Agent**: Launches and warms up the AI process immediately on startup. No more waiting for "cold starts."
+- **Zero Round-Trip Handshake**: Uses pipelined ACP (Agent Client Protocol) to start processing prompts instantly.
+- **Model Routing**: Automatically routes tasks to the fastest models (like `gemini-3-flash`) for instant commit messages.
+- **Parallel Data Loading**: Fetches git diffs and prepares the AI pipeline concurrently.
 
 ### 🖥️ High-Performance TUI
 - **Interactive Dashboard**: A centralized hub to manage your branch status and AI actions.
-- **Browser-Standard Scrolling**: Smooth scrollable areas with a visual scrollbar and full **Vim Keybindings** (`j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`).
-- **Live Feedback**: Contextual loading messages that cycle through actual analysis phases so you're never left wondering.
+- **Real-Time Reasoning**: See the agent's "thoughts" and tool calls stream with a natural typing effect as they happen.
+- **Auto-Scrolling Progress**: The AGENT PROGRESS box automatically stays pinned to the latest reasoning steps.
 - **Accept & Commit**: Review AI suggestions, edit them manually in the TUI, and commit directly with one keystroke.
-- **Copy to Clipboard**: Fast `[c]` key shortcut to grab any AI output for use elsewhere.
+- **Browser-Standard Scrolling**: Smooth scrollable areas with a visual scrollbar and full **Vim Keybindings** (`j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`).
 
 ### 💾 Smart Data & Persistence
 - **Global Storage**: All logs and cache are moved out of your workspace and stored in `~/.gdraft/` to keep your repositories clean.

@@ -18,6 +18,7 @@ interface PipelineOptions {
   diff?: string;
   diffPath?: string;
   metadata?: Record<string, unknown>;
+  modelId?: string;
 }
 
 const getLoadingMessages = (action: string, metadata?: Record<string, unknown>): string[] => {
@@ -55,6 +56,7 @@ export const runAIPipeline = async ({
   diff,
   diffPath,
   metadata,
+  modelId,
 }: PipelineOptions) => {
   const provider = getProvider(config.provider);
 
@@ -62,6 +64,11 @@ export const runAIPipeline = async ({
     console.error(chalk.red(`Error: Provider '${config.provider}' is not available.`));
     console.log(chalk.blue('Install:'), provider.installGuide);
     process.exit(1);
+  }
+
+  // Pre-warm if supported
+  if (provider.prewarm) {
+    provider.prewarm(modelId).catch(() => {});
   }
 
   const messages = getLoadingMessages(action, metadata);
@@ -93,6 +100,11 @@ export const runAIPipeline = async ({
         },
         onThought: (t) => {
           thought += t;
+          const thoughtLines = thought.split('\n').filter((l) => l.trim() !== '');
+          const lastLines = thoughtLines.slice(-3).join(' ➜ ');
+          if (lastLines) {
+            spinner.text = chalk.dim(`[AGENT] ${lastLines.substring(0, 100)}${lastLines.length > 100 ? '...' : ''}`);
+          }
         },
       },
       diffPath
@@ -104,12 +116,6 @@ export const runAIPipeline = async ({
 
     clearInterval(interval);
     spinner.succeed(chalk.green(`${successMessage} ${GitService.formatMode(metadata?.mode as string)}`));
-
-    if (thought) {
-      console.log(chalk.gray('\n--- Thought Process ---'));
-      console.log(chalk.dim(thought));
-      console.log(chalk.gray('-----------------------\n'));
-    }
 
     console.log(chalk.gray('--- Response ---'));
     console.log(result);
@@ -228,6 +234,7 @@ export const runActionWithDiff = async ({
     diffPath,
     hintMessage,
     metadata,
+    modelId: action === 'commit' ? 'gemini-3-flash' : 'auto-gemini-3',
     prompt,
     successMessage,
   });

@@ -1,8 +1,14 @@
 # CLI Usage Reference
 
-`gdraft` provides a powerful CLI for fast, non-interactive workflows. For an interactive experience, use `gdraft tui`.
+## High-Performance CLI
+`gdraft` is optimized for speed in detached (one-shot) mode. It uses **ACP Handshake Pipelining** to eliminate initialization round-trips, allowing the AI to start generating almost immediately after the process spawns.
 
-## Global Options
+### Real-Time Spinner Feedback
+During generation, the CLI spinner text is updated in real-time with the agent's **last three thought process lines**. This provides visibility into the agent's reasoning (e.g., which files it's analyzing or which tools it's using) without cluttering the final output. Once generation is complete, intermediate thoughts are cleared to keep your terminal clean.
+
+---
+
+## Commands
 
 The following options are available for most commands:
 

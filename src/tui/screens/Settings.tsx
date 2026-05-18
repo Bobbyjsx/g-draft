@@ -1,7 +1,6 @@
 import type React from 'react';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-// @ts-expect-error
 import { MultilineInput } from 'ink-multiline-input';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
@@ -121,16 +120,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
         )}
 
         {view === 'instructions' && (
-          <Box borderColor='blue' borderStyle='round' flexDirection='column' minWidth={60} paddingX={2} paddingY={1}>
-            <Box justifyContent='center'>
-              <Text bold color='blue'>
-                Custom AI Instructions
-              </Text>
+          <Box flexDirection='column' minWidth={60} paddingX={2} paddingY={1}>
+            <Box borderColor='blue' borderStyle='round' flexDirection='column' paddingX={2} paddingY={1} width='100%'>
+              <Box justifyContent='center' marginBottom={1}>
+                <Text bold color='blue'>
+                  Custom AI Instructions
+                </Text>
+              </Box>
+              <Box minHeight={5}>
+                <MultilineInput
+                  focus={view === 'instructions'}
+                  onChange={(val: string) => {
+                    setTempInstructions(val);
+                  }}
+                  showCursor
+                  value={tempInstructions}
+                />
+              </Box>
             </Box>
-            <Box marginTop={1} minHeight={5} paddingX={1}>
-              <MultilineInput onChange={setTempInstructions} value={tempInstructions} />
-            </Box>
-            <Box marginTop={1}>
+            <Box marginTop={1} paddingX={1}>
               <Text dimColor italic>
                 [Enter] for new line • [Esc] to save and exit
               </Text>

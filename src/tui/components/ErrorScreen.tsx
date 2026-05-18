@@ -1,6 +1,8 @@
 import type React from 'react';
+import { useEffect } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { Header } from './Header.js';
+import { logger } from '../../core/logger.js';
 
 interface ErrorScreenProps {
   error: string;
@@ -13,6 +15,16 @@ interface ErrorScreenProps {
 export const ErrorScreen: React.FC<ErrorScreenProps> = ({ error, onRetry, onHome, onQuit, onReport }) => {
   const { stdout } = useStdout();
   const width = stdout?.columns || 80;
+
+  useEffect(() => {
+    logger.logAction({
+      action: 'system-error',
+      error,
+      prompt: 'N/A',
+      response: '',
+      status: 'error',
+    });
+  }, [error]);
 
   return (
     <Box alignItems='center' flexDirection='column' height='100%' justifyContent='center' width='100%'>
