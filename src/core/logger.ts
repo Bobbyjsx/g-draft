@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { PostHog } from 'posthog-node';
+import type { Config } from './config.js';
 import { paths } from './paths.js';
 import fs from 'node:fs/promises';
 
@@ -21,6 +23,17 @@ export class Logger {
   }
 
   private lastLoggedError: string | null = null;
+  private posthog: PostHog | null = null;
+  private userId: string | null = null;
+
+  init(config: Config) {
+    this.userId = config.userId;
+    if (config.posthogApiKey) {
+      this.posthog = new PostHog(config.posthogApiKey, {
+        host: config.posthogHost,
+      });
+    }
+  }
 
   async logAction(entry: Omit<LogEntry, 'timestamp'>) {
     if (entry.status === 'error' && entry.error === this.lastLoggedError) {
@@ -49,8 +62,29 @@ export class Logger {
       const summaryPath = path.join(logsDir, 'history.log');
       const summaryLine = `[${fullEntry.timestamp}] ACTION: ${fullEntry.action.toUpperCase()} | STATUS: ${fullEntry.status.toUpperCase()}\n`;
       await fs.appendFile(summaryPath, summaryLine, 'utf8');
+
+      // Track to PostHog
+      if (this.posthog && this.userId) {
+        this.posthog.capture({
+          distinctId: this.userId,
+          event: `generation_${entry.status}`,
+          properties: {
+            action: entry.action,
+            durationMs: entry.durationMs,
+            error: entry.error,
+            model: entry.model,
+            status: entry.status,
+          },
+        });
+      }
     } catch (_e) {
       // Silent fail for logging
+    }
+  }
+
+  async shutdown() {
+    if (this.posthog) {
+      await this.posthog.shutdown();
     }
   }
 }

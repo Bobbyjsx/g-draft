@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import Conf from 'conf';
@@ -7,7 +8,10 @@ export const ConfigSchema = z.object({
   baseBranch: z.string().default('master'),
   customInstructions: z.string().default(''),
   diffMode: z.enum(['auto', 'staged', 'branch']).default('auto'),
+  posthogApiKey: z.string().optional(),
+  posthogHost: z.string().default('https://us.i.posthog.com'),
   provider: z.enum(['gemini', 'claude', 'codex', 'amazon-q']).default('gemini'),
+  userId: z.string().default(() => randomUUID()),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
