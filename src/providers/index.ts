@@ -104,6 +104,7 @@ export class GeminiProvider extends BaseProvider {
   private isPrewarming = false;
   private prewarmPromise: Promise<void> | null = null;
   private turnFinished = false;
+  private queue: Promise<void> = Promise.resolve();
 
   async run(prompt: string): Promise<string> {
     let result = '';
@@ -289,14 +290,90 @@ export class GeminiProvider extends BaseProvider {
   }
 
   async stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void> {
-    const isOneShot = !this.child && !this.isPrewarming;
-    if (isOneShot) {
-      this.child = execa(this.command, this.nonInteractiveFlags, {
-        stderr: 'pipe',
-        stdin: 'pipe',
-        stdout: 'pipe',
-      });
-      this.setupListeners();
+    const streamTask = async () => {
+      const isOneShot = !this.child && !this.isPrewarming;
+      if (isOneShot) {
+        this.child = execa(this.command, this.nonInteractiveFlags, {
+          stderr: 'pipe',
+          stdin: 'pipe',
+          stdout: 'pipe',
+        });
+        this.setupListeners();
+
+        let input = '';
+        if (diffPath && fs.existsSync(diffPath)) {
+          input = fs.readFileSync(diffPath, 'utf8');
+        }
+        const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
+
+        const initId = this.requestId++;
+        const sessId = this.requestId++;
+
+        const streamPromise = new Promise<void>((resolve, reject) => {
+          this.streamResolver = resolve;
+          this.streamRejecter = reject;
+        });
+
+        const initPromise = new Promise((resolve, reject) => {
+          this.pendingRequests.set(initId, { reject, resolve });
+        });
+        const sessionPromise = new Promise((resolve, reject) => {
+          this.pendingRequests.set(sessId, { reject, resolve });
+        });
+
+        const batch = [
+          JSON.stringify({
+            id: initId,
+            jsonrpc: '2.0',
+            method: 'initialize',
+            params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
+          }),
+          JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
+          JSON.stringify({
+            id: sessId,
+            jsonrpc: '2.0',
+            method: 'session/new',
+            params: { cwd: process.cwd(), mcpServers: [] },
+          }),
+        ].join('\n');
+
+        this.currentHandlers = handlers;
+        this.turnFinished = false;
+        this.child.stdin?.write(`${batch}\n`);
+
+        try {
+          await initPromise;
+          const session: any = await sessionPromise;
+          this.sessionId = session.sessionId;
+
+          await this.sendRequest('session/prompt', {
+            prompt: [{ text: fullPrompt, type: 'text' }],
+            sessionId: this.sessionId,
+          });
+
+          this.turnFinished = true;
+          if (!this.isTyping && this.thoughtQueue.length === 0) {
+            this.streamResolver?.();
+          }
+
+          if (this.child) {
+            this.child.stdin?.end();
+          }
+          await streamPromise;
+        } catch (err) {
+          this.streamRejecter?.(err);
+          await this.dispose();
+          throw err;
+        }
+        return;
+      }
+
+      if (this.isPrewarming) await this.prewarmPromise;
+      if (!this.child) await this.prewarm();
+
+      this.currentHandlers = handlers;
+      this.stderr = '';
+      this.turnFinished = false;
 
       let input = '';
       if (diffPath && fs.existsSync(diffPath)) {
@@ -304,45 +381,11 @@ export class GeminiProvider extends BaseProvider {
       }
       const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
 
-      const initId = this.requestId++;
-      const sessId = this.requestId++;
-
-      const streamPromise = new Promise<void>((resolve, reject) => {
-        this.streamResolver = resolve;
-        this.streamRejecter = reject;
-      });
-
-      const initPromise = new Promise((resolve, reject) => {
-        this.pendingRequests.set(initId, { reject, resolve });
-      });
-      const sessionPromise = new Promise((resolve, reject) => {
-        this.pendingRequests.set(sessId, { reject, resolve });
-      });
-
-      const batch = [
-        JSON.stringify({
-          id: initId,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: { clientInfo: { name: 'gdraft', version: '1.0.0' }, protocolVersion: 1 },
-        }),
-        JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }),
-        JSON.stringify({
-          id: sessId,
-          jsonrpc: '2.0',
-          method: 'session/new',
-          params: { cwd: process.cwd(), mcpServers: [] },
-        }),
-      ].join('\n');
-
-      this.currentHandlers = handlers;
-      this.turnFinished = false;
-      this.child.stdin?.write(`${batch}\n`);
-
       try {
-        await initPromise;
-        const session: any = await sessionPromise;
-        this.sessionId = session.sessionId;
+        const streamPromise = new Promise<void>((resolve, reject) => {
+          this.streamResolver = resolve;
+          this.streamRejecter = reject;
+        });
 
         await this.sendRequest('session/prompt', {
           prompt: [{ text: fullPrompt, type: 'text' }],
@@ -354,57 +397,23 @@ export class GeminiProvider extends BaseProvider {
           this.streamResolver?.();
         }
 
-        if (this.child) {
-          this.child.stdin?.end();
-        }
         await streamPromise;
-      } catch (err) {
-        this.streamRejecter?.(err);
-        await this.dispose();
+      } catch (err: any) {
+        handlers.onError?.(err.message);
         throw err;
+      } finally {
+        this.currentHandlers = null;
+        this.streamResolver = null;
+        this.streamRejecter = null;
+        this.turnFinished = false;
       }
-      return;
-    }
+    };
 
-    if (this.isPrewarming) await this.prewarmPromise;
-    if (!this.child) await this.prewarm();
+    this.queue = this.queue.then(streamTask).catch(() => {
+      /* Errors are handled inside streamTask or propagated to the caller of the current turn */
+    });
 
-    this.currentHandlers = handlers;
-    this.stderr = '';
-    this.turnFinished = false;
-
-    let input = '';
-    if (diffPath && fs.existsSync(diffPath)) {
-      input = fs.readFileSync(diffPath, 'utf8');
-    }
-    const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
-
-    try {
-      const streamPromise = new Promise<void>((resolve, reject) => {
-        this.streamResolver = resolve;
-        this.streamRejecter = reject;
-      });
-
-      await this.sendRequest('session/prompt', {
-        prompt: [{ text: fullPrompt, type: 'text' }],
-        sessionId: this.sessionId,
-      });
-
-      this.turnFinished = true;
-      if (!this.isTyping && this.thoughtQueue.length === 0) {
-        this.streamResolver?.();
-      }
-
-      await streamPromise;
-    } catch (err: any) {
-      handlers.onError?.(err.message);
-      throw err;
-    } finally {
-      this.currentHandlers = null;
-      this.streamResolver = null;
-      this.streamRejecter = null;
-      this.turnFinished = false;
-    }
+    return this.queue;
   }
 }
 
@@ -470,10 +479,13 @@ export class AmazonQProvider extends BaseProvider {
   }
 }
 
+let geminiInstance: GeminiProvider | null = null;
+
 export function getProvider(name: string): AIProvider {
   switch (name) {
     case 'gemini':
-      return new GeminiProvider();
+      if (!geminiInstance) geminiInstance = new GeminiProvider();
+      return geminiInstance;
     case 'claude':
       return new ClaudeProvider();
     case 'codex':
@@ -481,8 +493,9 @@ export function getProvider(name: string): AIProvider {
     case 'amazon-q':
       return new AmazonQProvider();
     default:
-      return new GeminiProvider();
+      if (!geminiInstance) geminiInstance = new GeminiProvider();
+      return geminiInstance;
   }
 }
 
-export const ALL_PROVIDERS = [new GeminiProvider(), new ClaudeProvider(), new CodexProvider(), new AmazonQProvider()];
+export const ALL_PROVIDERS = [getProvider('gemini'), getProvider('claude'), getProvider('codex'), getProvider('amazon-q')];

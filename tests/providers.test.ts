@@ -39,44 +39,49 @@ describe('AI Providers', () => {
       expect(firstWrite).toContain('"method":"initialize"');
       expect(firstWrite).toContain('"method":"session/new"');
 
-      child.stdout.emit('data', JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} }) + '\n');
-      child.stdout.emit('data', JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } }) + '\n');
+      child.stdout.emit('data', `${JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} })}\n`);
+      child.stdout.emit('data', `${JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } })}\n`);
 
       await prewarmPromise;
     });
 
     it('should stream thoughts and text with typing effect', async () => {
+      // Use getProvider to get the singleton (or just a new one for test isolation if preferred)
+      // For testing, new GeminiProvider() is fine as long as it's isolated.
       const provider = new GeminiProvider();
       const child = createMockChild();
       (vi.mocked(execa) as any).mockReturnValue(child);
 
       const prewarmPromise = provider.prewarm();
-      child.stdout.emit('data', JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} }) + '\n');
-      child.stdout.emit('data', JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } }) + '\n');
+      child.stdout.emit('data', `${JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} })}\n`);
+      child.stdout.emit('data', `${JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } })}\n`);
       await prewarmPromise;
 
       const handlers = { onText: vi.fn(), onThought: vi.fn() };
       const streamPromise = provider.stream('hello', handlers);
 
+      // We need to wait a tick for the queue to start
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       child.stdout.emit(
         'data',
-        JSON.stringify({
+        `${JSON.stringify({
           jsonrpc: '2.0',
           method: 'session/update',
           params: { update: { content: { text: 'T' }, sessionUpdate: 'agent_thought_chunk' } },
-        }) + '\n'
+        })}\n`
       );
 
       child.stdout.emit(
         'data',
-        JSON.stringify({
+        `${JSON.stringify({
           jsonrpc: '2.0',
           method: 'session/update',
           params: { update: { content: { text: 'Final' }, sessionUpdate: 'agent_message_chunk' } },
-        }) + '\n'
+        })}\n`
       );
 
-      child.stdout.emit('data', JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} }) + '\n');
+      child.stdout.emit('data', `${JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} })}\n`);
 
       await streamPromise;
 
@@ -92,14 +97,14 @@ describe('AI Providers', () => {
       const handlers = { onText: vi.fn() };
       const streamPromise = provider.stream('detached', handlers);
 
-      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      child.stdout.emit('data', JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} }) + '\n');
-      child.stdout.emit('data', JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } }) + '\n');
+      child.stdout.emit('data', `${JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} })}\n`);
+      child.stdout.emit('data', `${JSON.stringify({ id: 2, jsonrpc: '2.0', result: { sessionId: 'sid' } })}\n`);
 
-      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      child.stdout.emit('data', JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} }) + '\n');
+      child.stdout.emit('data', `${JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} })}\n`);
       child.emit('close', 0);
 
       await streamPromise;
