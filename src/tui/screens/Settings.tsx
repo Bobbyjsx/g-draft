@@ -17,7 +17,7 @@ interface SettingsScreenProps {
 
 type SettingsView = 'menu' | 'provider' | 'branch' | 'instructions';
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, config, setConfig, onBack, setLoading }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, config, setConfig, onBack }) => {
   const [view, setView] = useState<SettingsView>('menu');
   const [tempBranch, setTempBranch] = useState(config.baseBranch);
   const [tempInstructions, setTempInstructions] = useState(config.customInstructions);
