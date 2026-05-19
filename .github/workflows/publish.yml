@@ -2,13 +2,13 @@ name: Release and Publish
 
 on:
   workflow_run: # for git actions
-     workflows: ["Version and Tag"]
-     types:
-       - completed
+    workflows: ["Version and Tag"]
+    types:
+      - completed
 
   push: # for manual tag pushes
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   release:
@@ -21,8 +21,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Bumped default to 22
-          registry-url: 'https://registry.npmjs.org/'
+          node-version: "22" # Bumped default to 22
+          registry-url: "https://registry.npmjs.org/"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -47,4 +47,4 @@ jobs:
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.get_version.outputs.VERSION }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ADMIN_PAT || secrets.GITHUB_TOKEN }}
