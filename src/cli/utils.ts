@@ -142,6 +142,11 @@ export const runAIPipeline = async ({
       thought,
     });
 
+    // Kill any background provider processes
+    if (provider.dispose) {
+      await provider.dispose();
+    }
+
     // Save to cache for TUI persistence
     if (diff && ['commit', 'pr', 'review'].includes(action)) {
       cacheManager.set(action as CacheAction, {

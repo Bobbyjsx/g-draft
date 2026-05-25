@@ -168,13 +168,20 @@ export class GeminiProvider extends BaseProvider {
 
         this.child.stdin?.write(`${batch}\n`);
 
-        await initPromise;
+        const init = await initPromise;
         const session: any = await sessionPromise;
+
+        if (!init || !session) {
+          return;
+        }
+
         this.sessionId = session.sessionId;
         this.modelId = session.modelId || modelId;
       } catch (err) {
-        await this.dispose();
-        throw err;
+        if (!this.isDisposing) {
+          await this.dispose();
+          throw err;
+        }
       } finally {
         this.isPrewarming = false;
         this.prewarmPromise = null;
@@ -184,15 +191,41 @@ export class GeminiProvider extends BaseProvider {
     return this.prewarmPromise;
   }
 
+  private isDisposing = false;
+
   async dispose(): Promise<void> {
+    if (this.isDisposing) return;
+    this.isDisposing = true;
+
+    // Clear queues and state first to prevent listeners from triggering during kill
+    this.thoughtQueue = [];
+    this.isTyping = false;
+    this.currentHandlers = null;
+    this.streamResolver = null;
+    this.streamRejecter = null;
+
     if (this.child) {
       this.child.kill();
       this.child = null;
-      this.sessionId = null;
-      this.modelId = null;
-      this.isPrewarming = false;
-      this.prewarmPromise = null;
     }
+
+    // Resolve all pending requests with a null value instead of rejecting
+    // This prevents unhandled rejections during shutdown
+    for (const [id, pending] of this.pendingRequests) {
+      try {
+        pending.resolve(null);
+      } catch (_e) {
+        // Ignore errors during cleanup
+      }
+    }
+    this.pendingRequests.clear();
+
+    this.sessionId = null;
+    this.modelId = null;
+    this.isPrewarming = false;
+    this.prewarmPromise = null;
+    this.turnFinished = false;
+    this.isDisposing = false;
   }
 
   getModel(): string {
@@ -283,7 +316,7 @@ export class GeminiProvider extends BaseProvider {
       const char = this.thoughtQueue.shift();
       if (char) {
         this.currentHandlers?.onThought?.(char);
-        await new Promise((r) => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 1));
       }
     }
     this.isTyping = false;
@@ -294,13 +327,13 @@ export class GeminiProvider extends BaseProvider {
   }
 
   private sendRequest(method: string, params: any) {
-    if (!this.child) throw new Error('Provider not initialized');
+    if (!this.child || this.isDisposing) return Promise.resolve(null);
     const id = this.requestId++;
     const promise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`Request ${method} (id: ${id}) timed out after 300s`));
-      }, 300000);
+        reject(new Error(`Request ${method} (id: ${id}) timed out after 600s`));
+      }, 600000);
 
       this.pendingRequests.set(id, {
         reject: (err) => {
@@ -369,8 +402,13 @@ export class GeminiProvider extends BaseProvider {
       this.child.stdin?.write(`${batch}\n`);
 
       try {
-        await initPromise;
+        const init = await initPromise;
         const session: any = await sessionPromise;
+
+        if (!init || !session) {
+          return;
+        }
+
         this.sessionId = session.sessionId;
         this.modelId = session.modelId || 'default';
 
@@ -389,9 +427,11 @@ export class GeminiProvider extends BaseProvider {
         }
         await streamPromise;
       } catch (err) {
-        this.streamRejecter?.(err);
-        await this.dispose();
-        throw err;
+        if (!this.isDisposing) {
+          this.streamRejecter?.(err);
+          await this.dispose();
+          throw err;
+        }
       }
       return;
     }
@@ -427,8 +467,10 @@ export class GeminiProvider extends BaseProvider {
 
       await streamPromise;
     } catch (err: any) {
-      handlers.onError?.(err.message);
-      throw err;
+      if (!this.isDisposing) {
+        handlers.onError?.(err.message);
+        throw err;
+      }
     } finally {
       this.currentHandlers = null;
       this.streamResolver = null;

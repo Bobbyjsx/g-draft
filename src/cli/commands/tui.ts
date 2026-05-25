@@ -14,6 +14,10 @@ export const tuiCommand = (configManager: ConfigManager, gitService: GitService)
     }
 
     const config = configManager.getMergedConfig();
+
+    // Enter alternate screen buffer to allow clean exit (removing TUI from terminal)
+    process.stdout.write('\u001b[?1049h');
+
     const { waitUntilExit } = render(
       React.createElement(App, {
         configManager,
@@ -21,6 +25,14 @@ export const tuiCommand = (configManager: ConfigManager, gitService: GitService)
         initialConfig: config,
       })
     );
-    await waitUntilExit();
+
+    try {
+      await waitUntilExit();
+    } finally {
+      // Exit alternate screen buffer
+      process.stdout.write('\u001b[?1049l');
+      // Force exit to ensure no background tasks hang the process
+      process.exit(0);
+    }
   });
 };

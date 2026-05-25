@@ -58,23 +58,21 @@ export const Header: React.FC = () => {
         )}
 
         <Box marginTop={showBigText ? 1 : 0}>
-          <Text bold color='cyan'>
-            AI-POWERED GIT ASSISTANT v{pkg.version}
-          </Text>
+          <Text color='cyan'>AI-Powered Git Assistant · v{pkg.version}</Text>
         </Box>
       </Box>
 
       {newVersion && (
-        <Box backgroundColor='yellow' marginTop={1} paddingX={2}>
-          <Text bold color='black'>
-            🚀 UPDATE AVAILABLE: {pkg.version} → {newVersion}. Run `npm i -g g-draft`
+        <Box marginTop={1} paddingX={2}>
+          <Text color='yellow'>
+            ✨ Update available: {pkg.version} → {newVersion} · Run `npm i -g g-draft`
           </Text>
         </Box>
       )}
 
       {height > 25 && (
         <Box justifyContent='center' marginTop={1} width='100%'>
-          <Text dimColor>————————————————————————————————————————————————————————————————</Text>
+          <Text dimColor>————————————————————————————————————————————————</Text>
         </Box>
       )}
     </Box>

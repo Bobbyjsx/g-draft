@@ -137,16 +137,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
         {width > 60 && (
           <>
             <Box gap={1}>
-              <Text dimColor>BRANCH:</Text>
-              <Text bold color='white'>
-                {currentBranch}
+              <Text color='gray' dimColor>
+                Branch:
               </Text>
+              <Text color='white'>{currentBranch}</Text>
             </Box>
             <Box gap={1}>
-              <Text dimColor>PROVIDER:</Text>
-              <Text bold color='cyan'>
-                {config.provider.toUpperCase()}
+              <Text color='gray' dimColor>
+                Provider:
               </Text>
+              <Text color='cyan'>{config.provider.charAt(0).toUpperCase() + config.provider.slice(1).toLowerCase()}</Text>
             </Box>
           </>
         )}

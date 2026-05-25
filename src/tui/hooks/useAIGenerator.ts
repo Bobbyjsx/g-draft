@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { type CacheAction, cacheManager } from '../../core/cache.js';
 import { logger } from '../../core/logger.js';
 import type { AIProvider } from '../../providers/index.js';
@@ -33,6 +33,14 @@ export const useAIGenerator = ({
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
   const [lastMetadata, setLastMetadata] = useState<Record<string, unknown> | null>(null);
   const [hasAttempted, setHasAttempted] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (provider.dispose) {
+        provider.dispose().catch(() => {});
+      }
+    };
+  }, [provider]);
 
   const generate = useCallback(async () => {
     if (!prompt) return;

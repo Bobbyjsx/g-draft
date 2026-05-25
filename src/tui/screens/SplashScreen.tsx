@@ -16,7 +16,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(timer);
-          onComplete();
           return 100;
         }
         return prev + 5;
@@ -24,7 +23,13 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     }, 50);
 
     return () => clearInterval(timer);
-  }, [onComplete]);
+  }, []);
+
+  useEffect(() => {
+    if (progress >= 100) {
+      onComplete();
+    }
+  }, [progress, onComplete]);
 
   return (
     <Box alignItems='center' flexDirection='column' height='100%' justifyContent='center'>
