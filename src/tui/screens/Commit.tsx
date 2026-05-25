@@ -27,6 +27,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const [editing, setEditing] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'committing' | 'done'>('idle');
   const [diff, setDiff] = useState<string>('');
+  const [diffStat, setDiffStat] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [mode, setMode] = useState<string>('staged');
@@ -42,7 +43,11 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     [config.customInstructions, projectInfo]
   );
 
-  const prompt = useMemo(() => (diff ? PROMPTS.COMMIT(diff, promptOptions) : ''), [diff, promptOptions]);
+  const prompt = useMemo(() => {
+    if (!diff) return '';
+    const mainPrompt = PROMPTS.COMMIT(diff, promptOptions);
+    return diffStat ? `FILE SUMMARY:\n${diffStat}\n\n${mainPrompt}` : mainPrompt;
+  }, [diff, diffStat, promptOptions]);
 
   const {
     generate,
@@ -80,9 +85,13 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
 
     try {
-      const [info, diffResult] = await Promise.all([
+      const [info, diffResult, stat] = await Promise.all([
         gitService.getProjectInfo(),
         gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        gitService.getDiffStat({
           baseBranch: config.baseBranch,
           mode: 'auto',
         }),
@@ -90,6 +99,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
       ]);
 
       setProjectInfo(info);
+      setDiffStat(stat);
 
       const { diff: d, mode: m } = diffResult;
       if (!d) {

@@ -26,6 +26,7 @@ interface PRScreenProps {
 export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [diff, setDiff] = useState<string>('');
+  const [diffStat, setDiffStat] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
   const [branch, setBranch] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
@@ -52,8 +53,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
     action: 'pr',
     diff,
     diffPath,
-    metadata,
-    prompt,
+    prompt: diffStat ? `FILE SUMMARY:\n${diffStat}\n\n${prompt}` : prompt,
     provider: aiProvider,
     setGlobalLoading: setLoading,
   });
@@ -70,10 +70,14 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
     const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
 
     try {
-      const [info, currentBranch, diffResult] = await Promise.all([
+      const [info, currentBranch, diffResult, stat] = await Promise.all([
         gitService.getProjectInfo(),
         gitService.getCurrentBranch(),
         gitService.getDiff({
+          baseBranch: config.baseBranch,
+          mode: 'auto',
+        }),
+        gitService.getDiffStat({
           baseBranch: config.baseBranch,
           mode: 'auto',
         }),
@@ -81,6 +85,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
       ]);
 
       setBranch(currentBranch);
+      setDiffStat(stat);
 
       const { diff: d } = diffResult;
       if (!d) {

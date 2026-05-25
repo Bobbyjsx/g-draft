@@ -114,7 +114,14 @@ export const PROMPTS = {
 
   SUMMARIZE: (diff: string) =>
     `
-    Summarize this diff in 3 concise bullet points.
+    Summarize the key technical changes in this large diff.
+    Focus on:
+    - Core logic changes
+    - New features or components
+    - Significant refactors
+    - Configuration or dependency updates
+
+    Be concise but specific. Group by category if possible.
 
     Diff:
     ${diff}

@@ -68,11 +68,20 @@ export class GitService {
 
   async getDiff(options: DiffOptions = {}): Promise<{ diff: string; command: string; mode: string }> {
     const { mode = 'auto', baseBranch = 'main' } = options;
+    const excludePattern = [
+      ':!package-lock.json',
+      ':!pnpm-lock.yaml',
+      ':!yarn.lock',
+      ':!bun.lockb',
+      ':!*.lock',
+      ':!dist/*',
+      ':!node_modules/*',
+    ];
 
     try {
       if (mode === 'staged') {
         const cmd = 'git --no-pager diff --cached';
-        const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached']);
+        const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached', '--', '.', ...excludePattern]);
         return { command: cmd, diff: stdout, mode: 'staged' };
       }
 
@@ -86,11 +95,14 @@ export class GitService {
               'diff',
               '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
               'HEAD',
+              '--',
+              '.',
+              ...excludePattern,
             ]);
             return { command: cmd, diff: firstCommit, mode: 'first_commit' };
           }
           const cmd = 'git --no-pager diff HEAD~1..HEAD';
-          const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD']);
+          const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD', '--', '.', ...excludePattern]);
           return { command: cmd, diff: lastCommit, mode: 'last_commit' };
         }
         return { command: '', diff: '', mode: 'none' };
@@ -101,12 +113,12 @@ export class GitService {
           const { stdout: mergeBase } = await execa('git', ['--no-pager', 'merge-base', baseBranch, 'HEAD']);
           const mb = mergeBase.trim();
           const cmd = `git --no-pager merge-base ${baseBranch} HEAD && git --no-pager diff ${mb}`;
-          const { stdout } = await execa('git', ['--no-pager', 'diff', mb]);
+          const { stdout } = await execa('git', ['--no-pager', 'diff', mb, '--', '.', ...excludePattern]);
           return { command: cmd, diff: stdout, mode: 'branch' };
         } catch {
           // Fallback to triple-dot if merge-base fails
           const cmd = `git --no-pager diff ${baseBranch}...`;
-          const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`]);
+          const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`, '--', '.', ...excludePattern]);
           return { command: cmd, diff: stdout, mode: 'branch' };
         }
       }
@@ -129,7 +141,7 @@ export class GitService {
     // 3. If on base branch, show unstaged changes
     try {
       const cmd = 'git --no-pager diff';
-      const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff']);
+      const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff', '--', '.', ...excludePattern]);
       if (unstaged) return { command: cmd, diff: unstaged, mode: 'unstaged' };
     } catch {
       // Ignore
@@ -137,6 +149,24 @@ export class GitService {
 
     // 4. Fallback to last commit
     return this.getDiff({ mode: 'last_commit' });
+  }
+
+  async getDiffStat(options: DiffOptions = {}): Promise<string> {
+    const { mode = 'auto', baseBranch = 'main' } = options;
+    const excludePattern = [':!package-lock.json', ':!pnpm-lock.yaml', ':!yarn.lock', ':!bun.lockb', ':!*.lock'];
+
+    try {
+      const args = ['--no-pager', 'diff', '--stat'];
+      if (mode === 'staged') args.push('--cached');
+      else if (mode === 'last_commit') args.push('HEAD~1..HEAD');
+      else if (mode === 'branch') args.push(baseBranch);
+
+      args.push('--', '.', ...excludePattern);
+      const { stdout } = await execa('git', args);
+      return stdout.trim();
+    } catch {
+      return '';
+    }
   }
 
   static formatMode(m?: string): string {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { type CacheAction, cacheManager } from '../../core/cache.js';
 import { logger } from '../../core/logger.js';
+import { PROMPTS } from '../../core/prompts.js';
 import type { AIProvider } from '../../providers/index.js';
 
 interface UseAIGeneratorOptions {
@@ -57,13 +58,29 @@ export const useAIGenerator = ({
     let fullThought = '';
     let streamError: string | null = null;
 
+    let finalPrompt = prompt;
+
+    // Smart Diff: If the prompt is massive, perform a summarization pass first
+    if (prompt.length > 100000) {
+      setLoading(true);
+      try {
+        const summaryPrompt = PROMPTS.SUMMARIZE(diff || prompt.slice(0, 50000));
+        const summary = await provider.run(summaryPrompt, {
+          onThought: (t: string) => setThought((prev) => prev + t),
+        });
+        finalPrompt = prompt.replace(diff || '', `[SUMMARY OF LARGE DIFF]:\n${summary}`);
+      } catch (_e) {
+        // Fallback to original prompt if summarization fails
+      }
+    }
+
     try {
       if (!(await provider.isAvailable())) {
         throw new Error(`Provider ${provider.name} not found. ${provider.installGuide}`);
       }
 
       await provider.stream(
-        prompt,
+        finalPrompt,
         {
           onError: (err) => {
             streamError = err;

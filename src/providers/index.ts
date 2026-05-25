@@ -11,7 +11,7 @@ export interface AIProvider {
   name: string;
   installGuide: string;
   isAvailable(): Promise<boolean>;
-  run(prompt: string): Promise<string>;
+  run(prompt: string, handlers?: Partial<StreamHandlers>): Promise<string>;
   stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void>;
   getModel?(): string;
   prewarm?(modelId?: string): Promise<void>;
@@ -33,12 +33,14 @@ export abstract class BaseProvider implements AIProvider {
     }
   }
 
-  async run(prompt: string): Promise<string> {
+  async run(prompt: string, handlers?: Partial<StreamHandlers>): Promise<string> {
     const { stdout } = await execa(this.command, this.nonInteractiveFlags, {
       input: prompt,
       stdin: 'pipe',
     });
-    return stdout.trim();
+    const result = stdout.trim();
+    if (handlers?.onText) handlers.onText(result);
+    return result;
   }
 
   protected spawn(flags: string[], input: string) {
@@ -111,12 +113,15 @@ export class GeminiProvider extends BaseProvider {
   private prewarmPromise: Promise<void> | null = null;
   private turnFinished = false;
 
-  async run(prompt: string): Promise<string> {
+  async run(prompt: string, handlers?: Partial<StreamHandlers>): Promise<string> {
     let result = '';
     await this.stream(prompt, {
+      onError: handlers?.onError,
       onText: (text) => {
         result += text;
+        handlers?.onText?.(text);
       },
+      onThought: handlers?.onThought,
     });
     return result;
   }
@@ -315,8 +320,10 @@ export class GeminiProvider extends BaseProvider {
     while (this.thoughtQueue.length > 0) {
       const char = this.thoughtQueue.shift();
       if (char) {
-        this.currentHandlers?.onThought?.(char);
-        await new Promise((r) => setTimeout(r, 1));
+        if (this.currentHandlers?.onThought) {
+          this.currentHandlers.onThought(char);
+          await new Promise((r) => setTimeout(r, 1));
+        }
       }
     }
     this.isTyping = false;
@@ -486,9 +493,11 @@ export class ClaudeProvider extends BaseProvider {
   installGuide = 'npm install -g @anthropic-ai/claude-code';
   protected nonInteractiveFlags = ['--print'];
 
-  async run(prompt: string): Promise<string> {
+  async run(prompt: string, handlers?: Partial<StreamHandlers>): Promise<string> {
     const { stdout } = await this.spawn([...this.nonInteractiveFlags, prompt], '');
-    return stdout.trim();
+    const result = stdout.trim();
+    if (handlers?.onText) handlers.onText(result);
+    return result;
   }
 
   async stream(prompt: string, handlers: StreamHandlers, diffPath?: string): Promise<void> {
@@ -536,9 +545,11 @@ export class AmazonQProvider extends BaseProvider {
   installGuide = 'Check Amazon Q Developer CLI installation instructions.';
   protected nonInteractiveFlags = ['chat', '--no-interactive'];
 
-  async run(prompt: string): Promise<string> {
+  async run(prompt: string, handlers?: Partial<StreamHandlers>): Promise<string> {
     const { stdout } = await execa(this.command, this.nonInteractiveFlags, { input: prompt });
-    return stdout.trim();
+    const result = stdout.trim();
+    if (handlers?.onText) handlers.onText(result);
+    return result;
   }
 }
 
