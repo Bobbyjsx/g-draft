@@ -61,7 +61,8 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
   const loadingText = useLoadingMessages('pr', internalLoading || dataLoading, { branch });
   const { copy, copied } = useClipboard();
   const { stdout } = useStdout();
-  const _width = stdout?.columns || 80;
+  const width = stdout?.columns || 80;
+  const height = stdout?.rows || 24;
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
@@ -164,10 +165,16 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
 
   const isActuallyLoading = internalLoading || dataLoading || (diff && !prContent && !error);
   const showResult = !!prContent || (editing && !isActuallyLoading);
+  const showHeader = height > 15;
+  const showSecondaryInfo = width > 70 && height > 20;
+
+  // Responsive sizing
+  const contentWidth = Math.max(width - (width > 50 ? 8 : 2), 20);
+  const boxHeight = Math.max(height - (showHeader ? 16 : 10), 5);
 
   return (
     <Box flexDirection='column' height='100%'>
-      <Header />
+      {showHeader && <Header />}
 
       {internalLoading && !prContent && (
         <Box alignItems='center' flexDirection='column' flexGrow={1} justifyContent='center'>
@@ -177,12 +184,12 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
             </Text>
           )}
           {thought && (
-            <Box borderColor='blue' borderStyle='single' flexDirection='column' paddingX={2} paddingY={1} width='80%'>
+            <Box borderColor='blue' borderStyle='single' flexDirection='column' paddingX={2} paddingY={1} width={contentWidth}>
               <Text bold color='blue'>
                 AGENT PROGRESS
               </Text>
               <Box marginTop={1}>
-                <ScrollableBox autoScroll content={thought} maxHeight={8} width={Math.floor(_width * 0.8) - 4} />
+                <ScrollableBox autoScroll content={thought} maxHeight={8} width={contentWidth - 4} />
               </Box>
             </Box>
           )}
@@ -191,29 +198,29 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
 
       {showResult && (
         <Box flexDirection='column' flexGrow={1}>
-          <Box justifyContent='space-between' marginBottom={1} paddingX={1} width='100%'>
+          <Box justifyContent='space-between' marginBottom={1} paddingX={1} width={contentWidth}>
             <Box gap={1}>
               <Text bold color='blue'>
                 AI PR Assistant
               </Text>
-              {Boolean(lastMetadata?.branch) && (
+              {Boolean(showSecondaryInfo && lastMetadata?.branch) && (
                 <Text color='gray' dimColor italic>
                   (for {lastMetadata?.branch as string})
                 </Text>
               )}
             </Box>
-            {lastGeneratedAt && (
+            {Boolean(showSecondaryInfo && lastGeneratedAt) && (
               <Text color='gray' dimColor italic>
-                {isCached ? 'Loaded from cache' : 'Generated'} at {new Date(lastGeneratedAt).toLocaleTimeString()}
+                {isCached ? 'Cached' : 'New'} · {new Date(lastGeneratedAt!).toLocaleTimeString()}
               </Text>
             )}
           </Box>
 
           <Box flexDirection='column' flexGrow={1} gap={1}>
             {/* PR Content - Full Width */}
-            <Box flexDirection='column' flexGrow={1} width='100%'>
+            <Box flexDirection='column' flexGrow={1} width={contentWidth}>
               {editing ? (
-                <Box borderColor='blue' borderStyle='round' flexDirection='column' flexGrow={1} paddingX={1}>
+                <Box borderColor='blue' borderStyle='round' flexDirection='column' flexGrow={1} paddingX={1} width={contentWidth}>
                   <Text bold color='cyan'>
                     PR Description (Editing)
                   </Text>
@@ -225,29 +232,17 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
                 <ScrollableBox
                   borderColor='blue'
                   content={prContent}
-                  maxHeight={(stdout?.rows || 20) - 10}
+                  maxHeight={boxHeight}
                   title='PR Description'
                   titleColor='cyan'
-                  width={(stdout?.columns || 80) - 4}
+                  width={contentWidth}
                 />
               )}
-              {internalLoading && (
+              {internalLoading && height > 18 && (
                 <Box flexDirection='column' marginTop={1} paddingX={1}>
                   <Text color='yellow'>
-                    <Spinner type='dots' /> {thought ? 'Thinking/Acting...' : 'Streaming...'}
+                    <Spinner type='dots' /> {thought ? 'Thinking...' : 'Streaming...'}
                   </Text>
-                  {thought && (
-                    <Box marginTop={1}>
-                      <Text color='gray' dimColor italic>
-                        Latest:{' '}
-                        {thought
-                          .split('\n')
-                          .filter(Boolean)
-                          .pop()
-                          ?.slice(0, (stdout?.columns || 80) - 20)}
-                      </Text>
-                    </Box>
-                  )}
                 </Box>
               )}
             </Box>
@@ -264,15 +259,15 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
       )}
 
       {!internalLoading && !dataLoading && !editing && (
-        <Box gap={2} justifyContent='center' marginTop={1}>
+        <Box flexWrap='wrap' gap={width > 60 ? 2 : 1} justifyContent='center' marginTop={1} width='100%'>
           <Text bold color='yellow'>
-            [e] Edit Description
+            [e] Edit
           </Text>
           <Text bold color='cyan'>
-            [c] {copied ? 'Copied!' : 'Copy'}
+            [c] {copied ? 'Done' : 'Copy'}
           </Text>
           <Text bold color='magenta'>
-            [r] Retry Generation
+            [r] Retry
           </Text>
           <Text bold color='gray'>
             [esc] Back
@@ -282,7 +277,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
 
       {editing && (
         <Box justifyContent='center' marginTop={1}>
-          <Text color='yellow'>Editing PR description... Press [Enter] to save.</Text>
+          <Text color='yellow'>Press [Enter] to save changes.</Text>
         </Box>
       )}
     </Box>

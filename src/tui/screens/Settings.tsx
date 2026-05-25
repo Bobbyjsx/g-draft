@@ -23,6 +23,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   const [tempInstructions, setTempInstructions] = useState(config.customInstructions);
   const [instructionTarget, setInstructionTarget] = useState<'global' | 'project'>('global');
   const { stdout } = useStdout();
+  const width = stdout?.columns || 80;
+  const height = stdout?.rows || 24;
 
   const menuItems = [
     { label: 'AI Provider', value: 'provider' },
@@ -94,6 +96,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
     }
   });
 
+  const editorRows = Math.max(5, height - 18);
+  const editorMaxRows = Math.max(10, height - 12);
+
   return (
     <Box flexDirection='column' height='100%' width='100%'>
       <Header />
@@ -103,35 +108,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
         flexDirection='column'
         flexGrow={1}
         justifyContent={view === 'instructions' ? 'flex-start' : 'center'}
-        paddingX={view === 'instructions' ? 4 : 2}
+        paddingX={view === 'instructions' ? (width > 60 ? 4 : 1) : 2}
       >
         {view === 'menu' && (
-          <Box borderColor='gray' borderStyle='round' flexDirection='column' paddingX={4} paddingY={1}>
+          <Box borderColor='gray' borderStyle='round' flexDirection='column' paddingX={width > 60 ? 4 : 1} paddingY={1}>
             <Box marginBottom={1}>
               <Text bold color='yellow'>
                 Settings
               </Text>
             </Box>
             <SelectInput items={menuItems} onSelect={handleMenuSelect} />
-            <Box flexDirection='column' marginTop={1} paddingTop={1}>
-              <Box>
-                <Text color='gray' dimColor>
-                  Active Provider:{' '}
-                </Text>
-                <Text color='cyan'>{config.provider.charAt(0).toUpperCase() + config.provider.slice(1).toLowerCase()}</Text>
+            {height > 15 && (
+              <Box flexDirection='column' marginTop={1} paddingTop={1}>
+                <Box>
+                  <Text color='gray' dimColor>
+                    Active Provider:{' '}
+                  </Text>
+                  <Text color='cyan'>{config.provider.charAt(0).toUpperCase() + config.provider.slice(1).toLowerCase()}</Text>
+                </Box>
+                <Box>
+                  <Text color='gray' dimColor>
+                    Primary Branch:{' '}
+                  </Text>
+                  <Text color='white'>{config.baseBranch}</Text>
+                </Box>
               </Box>
-              <Box>
-                <Text color='gray' dimColor>
-                  Primary Branch:{' '}
-                </Text>
-                <Text color='white'>{config.baseBranch}</Text>
-              </Box>
-            </Box>
+            )}
           </Box>
         )}
 
         {view === 'provider' && (
-          <Box borderColor='cyan' borderStyle='round' flexDirection='column' paddingX={4} paddingY={1}>
+          <Box borderColor='cyan' borderStyle='round' flexDirection='column' paddingX={width > 60 ? 4 : 1} paddingY={1}>
             <Box marginBottom={1}>
               <Text bold color='cyan'>
                 AI Provider
@@ -142,7 +149,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
         )}
 
         {view === 'branch' && (
-          <Box borderColor='magenta' borderStyle='round' flexDirection='column' paddingX={4} paddingY={1}>
+          <Box borderColor='magenta' borderStyle='round' flexDirection='column' paddingX={width > 60 ? 4 : 1} paddingY={1}>
             <Box marginBottom={1}>
               <Text bold color='magenta'>
                 Base Branch
@@ -161,26 +168,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
         )}
 
         {view === 'instructions' && (
-          <Box flexDirection='column' flexGrow={1} marginTop={1} width='100%'>
-            <Box marginBottom={1}>
-              <Text bold color='blue'>
-                {instructionTarget === 'global' ? 'Global' : 'Project'} Instructions
-              </Text>
-              <Text color='gray' dimColor>
-                {' '}
-                — Custom rules for AI generation
-              </Text>
+          <Box flexDirection='column' flexGrow={1} marginTop={height > 15 ? 1 : 0} width='100%'>
+            <Box flexDirection='row' justifyContent='space-between' marginBottom={1}>
+              <Box>
+                <Text bold color='blue'>
+                  {instructionTarget === 'global' ? 'Global' : 'Project'} Instructions
+                </Text>
+                {width > 80 && (
+                  <Text color='gray' dimColor>
+                    {' '}
+                    — Custom rules for AI generation
+                  </Text>
+                )}
+              </Box>
+              {width > 60 && (
+                <Text color='blue' dimColor>
+                  {tempInstructions.length} chars
+                </Text>
+              )}
             </Box>
 
-            <Box borderColor='gray' borderStyle='single' flexGrow={1} minHeight={16} padding={1}>
+            <Box borderColor='gray' borderStyle='single' flexGrow={1} minHeight={5} padding={1}>
               <MultilineInput
                 focus={view === 'instructions'}
-                maxRows={20}
+                maxRows={editorMaxRows}
                 onChange={(val: string) => {
                   setTempInstructions(val);
                 }}
                 placeholder='Type your custom instructions here...'
-                rows={12}
+                rows={editorRows}
                 showCursor
                 value={tempInstructions}
               />
@@ -195,9 +211,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
                   [Enter] New Line
                 </Text>
               </Box>
-              <Text color='blue' dimColor>
-                {tempInstructions.length} characters
-              </Text>
+              {width <= 60 && (
+                <Text color='blue' dimColor>
+                  {tempInstructions.length} chars
+                </Text>
+              )}
             </Box>
           </Box>
         )}

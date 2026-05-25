@@ -21,6 +21,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
   const [error, setError] = useState<string | null>(null);
   const { stdout } = useStdout();
   const width = stdout?.columns || 80;
+  const height = stdout?.rows || 24;
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -92,11 +93,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
     );
   }
 
+  const showDescriptions = width > 70 && height > 22;
+  const showFooterDetails = width > 65;
+
   return (
     <Box flexDirection='column' height='100%' width='100%'>
       <Header />
 
-      <Box flexDirection='column' flexGrow={1} marginTop={1} paddingX={2} width='100%'>
+      <Box flexDirection='column' flexGrow={1} marginTop={height > 15 ? 1 : 0} paddingX={width > 40 ? 2 : 0} width='100%'>
         {/* DASHBOARD ACTIONS */}
         <Box flexDirection='column' gap={0}>
           <SelectInput
@@ -113,16 +117,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
           />
         </Box>
 
-        {/* Action descriptions (only show if enough width) */}
-        {width > 60 && (
+        {/* Action descriptions (only show if enough space) */}
+        {showDescriptions && (
           <Box flexDirection='column' marginTop={1} paddingLeft={4}>
-            <Text italic>Select an action above and press Enter to proceed.</Text>
+            <Text color='gray' italic>
+              Select an action above and press Enter to proceed.
+            </Text>
           </Box>
         )}
       </Box>
 
       {/* FOOTER CONTROLS */}
-      <Box gap={3} justifyContent='flex-start' marginTop={1} paddingX={2} width='100%'>
+      <Box
+        flexDirection={showFooterDetails ? 'row' : 'column'}
+        gap={showFooterDetails ? 3 : 0}
+        justifyContent='flex-start'
+        marginTop={1}
+        paddingX={width > 40 ? 2 : 1}
+        width='100%'
+      >
         <Text color='gray'>
           ↑↓ Select •{' '}
           <Text bold color='white'>
@@ -134,8 +147,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
           </Text>{' '}
           Quit
         </Text>
-        {width > 60 && (
-          <>
+        {showFooterDetails && (
+          <Box gap={2}>
             <Box gap={1}>
               <Text color='gray' dimColor>
                 Branch:
@@ -148,7 +161,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
               </Text>
               <Text color='cyan'>{config.provider.charAt(0).toUpperCase() + config.provider.slice(1).toLowerCase()}</Text>
             </Box>
-          </>
+          </Box>
         )}
       </Box>
     </Box>

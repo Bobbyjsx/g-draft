@@ -35,26 +35,30 @@ export const Header: React.FC = () => {
     }
   }, [height]);
 
-  const showBigText = width > 70 && height > 20;
+  const showBigText = width > 85 && height > 22;
+  const showDoubleBorder = height > 18;
+  const showDecorator = height > 28;
 
   return (
-    <Box alignItems='center' flexDirection='column' marginBottom={height > 15 ? 1 : 0} width='100%'>
+    <Box alignItems='center' flexDirection='column' marginBottom={height > 18 ? 1 : 0} width='100%'>
       <Box
         alignItems='center'
         borderColor='cyan'
-        borderStyle={height > 15 ? 'double' : 'single'}
+        borderStyle={showDoubleBorder ? 'double' : 'single'}
         flexDirection='column'
         paddingX={width > 60 ? 4 : 1}
-        paddingY={height > 20 ? 1 : 0}
+        paddingY={height > 22 ? 1 : 0}
       >
         {showBigText ? (
           <Gradient name='atlas'>
             <BigText font='tiny' text='G-DRAFT' />
           </Gradient>
         ) : (
-          <Text bold color='cyan'>
-            G - D R A F T
-          </Text>
+          <Box paddingX={2}>
+            <Text bold color='cyan'>
+              G · D · R · A · F · T
+            </Text>
+          </Box>
         )}
 
         <Box marginTop={showBigText ? 1 : 0}>
@@ -62,7 +66,7 @@ export const Header: React.FC = () => {
         </Box>
       </Box>
 
-      {newVersion && (
+      {newVersion && height > 12 && (
         <Box marginTop={1} paddingX={2}>
           <Text color='yellow'>
             ✨ Update available: {pkg.version} → {newVersion} · Run `npm i -g g-draft`
@@ -70,7 +74,7 @@ export const Header: React.FC = () => {
         </Box>
       )}
 
-      {height > 25 && (
+      {showDecorator && (
         <Box justifyContent='center' marginTop={1} width='100%'>
           <Text dimColor>————————————————————————————————————————————————</Text>
         </Box>
