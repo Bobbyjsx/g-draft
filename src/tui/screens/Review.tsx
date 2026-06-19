@@ -10,7 +10,7 @@ import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
-import { getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
+import { formatDuration, getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
 import { useClipboard } from '../hooks/useClipboard.js';
 import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
@@ -53,6 +53,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
     setHasAttempted,
     lastGeneratedAt,
     setLastGeneratedAt,
+    durationMs,
   } = useAIGenerator({
     action: 'review',
     config,
@@ -201,7 +202,8 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
             </Text>
             {Boolean(showSecondaryInfo && lastGeneratedAt) && (
               <Text color='gray' dimColor italic>
-                {isCached ? 'Cached' : 'New'} · {new Date(lastGeneratedAt!).toLocaleTimeString()}
+                {isCached ? 'Cached' : `New${durationMs ? ` (${formatDuration(durationMs)})` : ''}`} ·{' '}
+                {new Date(lastGeneratedAt!).toLocaleTimeString()}
               </Text>
             )}
           </Box>

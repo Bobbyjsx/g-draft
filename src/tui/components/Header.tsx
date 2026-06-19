@@ -5,6 +5,7 @@ import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
 import latestVersion from 'latest-version';
 import semver from 'semver';
+import { paths } from '../../core/paths.js';
 import { APP_VERSION } from '../../core/version.js';
 
 const pkg = {
@@ -61,8 +62,13 @@ export const Header: React.FC = () => {
           </Box>
         )}
 
-        <Box marginTop={showBigText ? 1 : 0}>
+        <Box alignItems='center' flexDirection='column' marginTop={showBigText ? 1 : 0}>
           <Text color='cyan'>AI-Powered Git Assistant · v{pkg.version}</Text>
+          {height > 12 && (
+            <Text color='gray' dimColor>
+              Project ID: <Text color='magenta'>{paths.getProjectId()}</Text>
+            </Text>
+          )}
         </Box>
       </Box>
 

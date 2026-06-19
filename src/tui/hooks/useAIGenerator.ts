@@ -41,6 +41,7 @@ export const useAIGenerator = ({
   const [thought, setThought] = useState<string>('');
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
   const [lastMetadata, setLastMetadata] = useState<Record<string, unknown> | null>(null);
+  const [durationMs, setDurationMs] = useState<number | null>(null);
   const [hasAttempted, setHasAttempted] = useState(false);
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export const useAIGenerator = ({
     setError(null);
     setResult('');
     setThought('');
+    setDurationMs(null);
     setHasAttempted(true);
 
     const startTime = Date.now();
@@ -155,6 +157,7 @@ export const useAIGenerator = ({
       }
 
       setThought(cleanRawThought(fullThought, provider.name === 'codex'));
+      setDurationMs(Date.now() - startTime);
 
       const timestamp = new Date().toISOString();
       setLastGeneratedAt(timestamp);
@@ -201,6 +204,7 @@ export const useAIGenerator = ({
       }
 
       setThought(cleanRawThought(fullThought, provider.name === 'codex'));
+      setDurationMs(null);
 
       const msg = e.message || `Error generating ${action}`;
       setError(msg);
@@ -229,6 +233,7 @@ export const useAIGenerator = ({
   }, [action, provider, prompt, diff, diffPath, metadata, onSuccess, onError, setGlobalLoading, config]);
 
   return {
+    durationMs,
     error,
     generate,
     hasAttempted,
@@ -244,6 +249,13 @@ export const useAIGenerator = ({
     thought,
   };
 };
+
+export function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 export function getCleanThoughts(thoughtStr: string): string[] {
   if (!thoughtStr) return [];

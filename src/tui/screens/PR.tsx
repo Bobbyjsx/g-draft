@@ -11,7 +11,7 @@ import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
-import { getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
+import { formatDuration, getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
 import { useClipboard } from '../hooks/useClipboard.js';
 import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
 import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
@@ -50,6 +50,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
     setLastGeneratedAt,
     lastMetadata,
     setLastMetadata,
+    durationMs,
   } = useAIGenerator({
     action: 'pr',
     config,
@@ -228,7 +229,8 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
             </Box>
             {Boolean(showSecondaryInfo && lastGeneratedAt) && (
               <Text color='gray' dimColor italic>
-                {isCached ? 'Cached' : 'New'} · {new Date(lastGeneratedAt!).toLocaleTimeString()}
+                {isCached ? 'Cached' : `New${durationMs ? ` (${formatDuration(durationMs)})` : ''}`} ·{' '}
+                {new Date(lastGeneratedAt!).toLocaleTimeString()}
               </Text>
             )}
           </Box>
