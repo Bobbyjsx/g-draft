@@ -13,6 +13,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -21,8 +24,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22" # Bumped default to 22
+          node-version: "22"
           registry-url: "https://registry.npmjs.org/"
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -35,7 +41,6 @@ jobs:
       - name: Run changeset publish
         run: pnpm exec changeset publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version
