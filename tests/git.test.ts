@@ -39,7 +39,20 @@ describe('GitService', () => {
     const result = await gitService.getDiff({ mode: 'staged' });
     expect(result.diff).toBe('staged changes');
     expect(result.command).toBe('git --no-pager diff --cached');
-    expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'diff', '--cached']);
+    expect(execa).toHaveBeenCalledWith('git', [
+      '--no-pager',
+      'diff',
+      '--cached',
+      '--',
+      '.',
+      ':!package-lock.json',
+      ':!pnpm-lock.yaml',
+      ':!yarn.lock',
+      ':!bun.lockb',
+      ':!*.lock',
+      ':!dist/*',
+      ':!node_modules/*',
+    ]);
   });
 
   it('should get branch diff using merge-base', async () => {
@@ -52,6 +65,19 @@ describe('GitService', () => {
     expect(result.diff).toBe('branch changes');
     expect(result.command).toBe('git --no-pager merge-base main HEAD && git --no-pager diff merge-base-hash');
     expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'merge-base', 'main', 'HEAD']);
-    expect(execa).toHaveBeenCalledWith('git', ['--no-pager', 'diff', 'merge-base-hash']);
+    expect(execa).toHaveBeenCalledWith('git', [
+      '--no-pager',
+      'diff',
+      'merge-base-hash',
+      '--',
+      '.',
+      ':!package-lock.json',
+      ':!pnpm-lock.yaml',
+      ':!yarn.lock',
+      ':!bun.lockb',
+      ':!*.lock',
+      ':!dist/*',
+      ':!node_modules/*',
+    ]);
   });
 });

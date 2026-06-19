@@ -62,6 +62,16 @@
   },
   "main": "dist/index.js",
   "name": "g-draft",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "js-yaml": "^4.2.0",
+      "postcss": "^8.5.10",
+      "vite": "^6.4.3",
+      "vitest": "^3.2.6",
+      "ws": "^8.21.0"
+    }
+  },
   "scripts": {
     "biome:fixAll": "biome check --fix --no-errors-on-unmatched",
     "build": "tsc",

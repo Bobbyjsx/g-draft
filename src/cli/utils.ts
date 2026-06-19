@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import chalk from 'chalk';
 import ora from 'ora';
 import { type CacheAction, cacheManager } from '../core/cache.js';
@@ -5,6 +6,7 @@ import { copyToClipboard } from '../core/clipboard.js';
 import type { Config } from '../core/config.js';
 import { GitService } from '../core/git.js';
 import { logger } from '../core/logger.js';
+import { PROMPTS } from '../core/prompts.js';
 import { getProvider } from '../providers/index.js';
 
 interface PipelineOptions {
@@ -83,13 +85,15 @@ export const runAIPipeline = async ({
     spinner.text = messages[messageIndex];
   }, 3000);
 
+  const decoratedPrompt = provider.decoratePrompt ? provider.decoratePrompt(prompt) : prompt;
+
   try {
     let result = '';
     let thought = '';
     let streamError: string | null = null;
 
     await provider.stream(
-      prompt,
+      decoratedPrompt,
       {
         onError: (err) => {
           streamError = err;
@@ -107,7 +111,9 @@ export const runAIPipeline = async ({
           }
         },
       },
-      diffPath
+      diffPath,
+      false,
+      PROMPTS.SYSTEM
     );
 
     if (streamError) {
@@ -136,11 +142,17 @@ export const runAIPipeline = async ({
     await logger.logAction({
       action,
       diffCommand,
-      prompt,
+      model: provider.getModel?.(),
+      prompt: decoratedPrompt,
       response: result,
       status: 'success',
       thought,
     });
+
+    // Kill any background provider processes
+    if (provider.dispose) {
+      await provider.dispose();
+    }
 
     // Save to cache for TUI persistence
     if (diff && ['commit', 'pr', 'review'].includes(action)) {
@@ -150,6 +162,12 @@ export const runAIPipeline = async ({
         metadata,
         timestamp: new Date().toISOString(),
       });
+    }
+
+    if (diffPath && fs.existsSync(diffPath)) {
+      try {
+        fs.unlinkSync(diffPath);
+      } catch (_e) {}
     }
 
     return result;
@@ -162,10 +180,17 @@ export const runAIPipeline = async ({
       action,
       diffCommand,
       error: e.message,
-      prompt,
+      model: provider.getModel?.(),
+      prompt: decoratedPrompt,
       response: '',
       status: 'error',
     });
+
+    if (diffPath && fs.existsSync(diffPath)) {
+      try {
+        fs.unlinkSync(diffPath);
+      } catch (_e) {}
+    }
 
     process.exit(1);
   }
@@ -219,10 +244,11 @@ export const runActionWithDiff = async ({
     const branch = await gitService.getCurrentBranch();
     metadata.branch = branch;
     const template = await gitService.getPRTemplate();
-    const { PROMPTS } = await import('../core/prompts.js');
-    prompt = template ? PROMPTS.PR_WITH_TEMPLATE(template, diff, promptOptions) : PROMPTS.PR_NO_TEMPLATE(diff, promptOptions);
+    prompt = template
+      ? PROMPTS.PR_WITH_TEMPLATE(template, diffPath, promptOptions)
+      : PROMPTS.PR_NO_TEMPLATE(diffPath, promptOptions);
   } else {
-    prompt = getPrompt(diff); // Note: getPrompt should ideally accept promptOptions too, but for simplicity we'll keep it for now or update callers.
+    prompt = getPrompt(diffPath);
   }
 
   return runAIPipeline({
@@ -234,7 +260,6 @@ export const runActionWithDiff = async ({
     diffPath,
     hintMessage,
     metadata,
-    modelId: action === 'commit' ? 'gemini-3-flash' : 'auto-gemini-3',
     prompt,
     successMessage,
   });

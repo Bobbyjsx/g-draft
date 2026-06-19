@@ -6,32 +6,28 @@ export interface PromptOptions {
 }
 
 export const PROMPTS = {
-  COMMIT: (diff: string, options: PromptOptions = {}) =>
+  COMMIT: (diffFilePath: string, options: PromptOptions = {}) =>
     `
-    ${PROMPTS.SYSTEM}
-
     CURRENT ACTION: Generating a Commit Message
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
-    Generate a Conventional Commit message from this diff.
+    Generate a Conventional Commit message from the diff.
+    CRITICAL RULE: Do NOT wrap your response in markdown code blocks (e.g. \`\`\`). Output raw text only.
 
     Skill: GIT_WORKFLOW
     ${SKILLS.GIT_WORKFLOW}
 
     ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
-
-    Diff:
-    ${diff}
+    
+    diffFilePath: ${diffFilePath}
       `.trim(),
 
-  PR_NO_TEMPLATE: (diff: string, options: PromptOptions = {}) =>
+  PR_NO_TEMPLATE: (diffFilePath: string, options: PromptOptions = {}) =>
     `
-    ${PROMPTS.SYSTEM}
-
     CURRENT ACTION: Generating a Pull Request Description
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
-    Generate a structured Pull Request description from this diff.
+    Generate a structured Pull Request description from the diff.
 
     Include:
     - Summary
@@ -43,21 +39,18 @@ export const PROMPTS = {
     - Thoughts or personal opinions to the PR description.
 
     ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
-
-    Diff:
-    ${diff}
+    
+    diffFilePath: ${diffFilePath}
       `.trim(),
 
-  PR_WITH_TEMPLATE: (template: string, diff: string, options: PromptOptions = {}) =>
+  PR_WITH_TEMPLATE: (template: string, diffFilePath: string, options: PromptOptions = {}) =>
     `
-    ${PROMPTS.SYSTEM}
-
     CURRENT ACTION: Filling a Pull Request Template
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
-    Fill this PR template using the provided diff.
+    Fill this PR template using the diff.
 
-    CRITICAL RULES:
+    CRITICAL RULES FOR TEMPLATE:
     1. NEVER remove or omit any sections, headers, or existing text from the template, except comments.
     2. Only FILL in the information required by the template.
     3. REPLACE placeholders (like "Fixes # (issue)") with actual data if available in the diff, or leave them as is if not.
@@ -72,19 +65,16 @@ export const PROMPTS = {
 
     Template:
     ${template}
-
-    Diff:
-    ${diff}
+    
+    diffFilePath: ${diffFilePath}
       `.trim(),
 
-  REVIEW: (diff: string, options: PromptOptions = {}) =>
+  REVIEW: (diffFilePath: string, options: PromptOptions = {}) =>
     `
-    ${PROMPTS.SYSTEM}
-
     CURRENT ACTION: Performing a Code Review (Audit)
     ${options.projectContext ? `Project Context: ${options.projectContext}` : ''}
 
-    Perform a rigorous code review on this diff.
+    Perform a rigorous code review on the diff.
 
     Use these imported Audit Skills:
 
@@ -107,17 +97,22 @@ export const PROMPTS = {
     Be concise, technical, and highly actionable.
 
     ${options.customInstructions ? `Custom Rules:\n${options.customInstructions}` : ''}
-
-    Diff:
-    ${diff}
+    
+    diffFilePath: ${diffFilePath}
       `.trim(),
 
-  SUMMARIZE: (diff: string) =>
+  SUMMARIZE: (diffFilePath: string) =>
     `
-    Summarize this diff in 3 concise bullet points.
+    Summarize the key technical changes in the diff.
+    Focus on:
+    - Core logic changes
+    - New features or components
+    - Significant refactors
+    - Configuration or dependency updates
 
-    Diff:
-    ${diff}
+    Be concise but specific. Group by category if possible.
+
+    diffFilePath: ${diffFilePath}
       `.trim(),
   SYSTEM: `
     You are a senior software engineer and security auditor.
@@ -126,5 +121,9 @@ export const PROMPTS = {
     1. Security and Data Safety
     2. Performance and Efficiency
     3. Clean Code and Maintainability
+    
+    CRITICAL INSTRUCTION: A 'diffFilePath' property pointing to a temporary file containing the git diff will always be appended to the end of the user instructions. You MUST read the diff content from this file path. Do NOT execute \`git diff\` or run any shell commands to inspect the repository.
+    
+    CRITICAL RULE: Do NOT include any conversational filler, greetings (e.g., "Hi bob", "Here is the PR..."), or introductory sentences. Output ONLY the raw requested content directly.
       `.trim(),
 };

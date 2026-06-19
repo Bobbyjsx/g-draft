@@ -12,7 +12,7 @@ During generation, the CLI spinner text is updated in real-time with the agent's
 
 The following options are available for most commands:
 
-- `-p, --provider <provider>`: AI provider to use (e.g., `gemini`, `claude`, `amazon-q`, `codex`). Overrides your configuration.
+- `-p, --provider <provider>`: AI provider to use (e.g., `gemini`, `claude`, `kiro`, `codex`). Overrides your configuration.
 - `-h, --help`: Show help for the command.
 
 ---

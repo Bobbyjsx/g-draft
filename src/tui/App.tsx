@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Box, useApp, useInput } from 'ink';
+import { Box, useApp, useInput, useStdout } from 'ink';
 import type { Config, ConfigManager } from '../core/config.js';
 import type { GitService } from '../core/git.js';
 import { getProvider } from '../providers/index.js';
@@ -27,7 +27,10 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
   const [config, setConfig] = useState<Config>(initialConfig);
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  useApp();
+  const { exit } = useApp();
+  const { stdout } = useStdout();
+  const width = stdout?.columns || 80;
+  const height = stdout?.rows || 24;
 
   const aiProvider = useMemo(() => getProvider(config.provider), [config.provider]);
 
@@ -40,31 +43,33 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
         /* Silent fail for prewarm */
       });
     }
-
-    return () => {
-      if (aiProvider.dispose) {
-        aiProvider.dispose();
-      }
-    };
   }, [gitService, aiProvider]);
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
       const handleExit = async () => {
-        setScreen('exit');
-        if (aiProvider.dispose) {
-          await aiProvider.dispose();
+        try {
+          setScreen('exit');
+          // Wait for render cycle to complete so user sees the Exit screen
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          if (aiProvider.dispose) {
+            // Race disposal against a timeout to prevent hanging the exit
+            await Promise.race([aiProvider.dispose(), new Promise((resolve) => setTimeout(resolve, 3000))]);
+          }
+        } catch (_e) {
+          // Silent catch for exit cleanup
+        } finally {
+          exit();
         }
-        // Small delay for UI to show exit screen before killing
-        setTimeout(() => {
-          process.exit(0);
-        }, 1200);
       };
-      handleExit();
+      handleExit().catch(() => exit());
     }
 
     if (key.escape) {
-      setScreen('dashboard');
+      if (!['splash', 'exit', 'settings'].includes(screen)) {
+        setScreen('dashboard');
+      }
     }
   });
 
@@ -123,9 +128,11 @@ export const App: React.FC<AppProps> = ({ configManager, gitService, initialConf
     }
   };
 
+  const showBorder = width > 50 && height > 15;
+
   return (
-    <Box borderColor='blue' borderStyle='round' flexDirection='column' height='100%' width='100%'>
-      <Box flexDirection='column' flexGrow={1} paddingX={1} width='100%'>
+    <Box borderColor='blue' borderStyle={showBorder ? 'round' : undefined} flexDirection='column' height='100%' width='100%'>
+      <Box flexDirection='column' flexGrow={1} paddingX={showBorder ? 1 : 0} width='100%'>
         {renderScreen()}
       </Box>
       <Box marginTop={0} width='100%'>

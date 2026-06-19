@@ -5,6 +5,7 @@ import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
 import latestVersion from 'latest-version';
 import semver from 'semver';
+import { paths } from '../../core/paths.js';
 import { APP_VERSION } from '../../core/version.js';
 
 const pkg = {
@@ -35,46 +36,53 @@ export const Header: React.FC = () => {
     }
   }, [height]);
 
-  const showBigText = width > 70 && height > 20;
+  const showBigText = width > 85 && height > 22;
+  const showDoubleBorder = height > 18;
+  const showDecorator = height > 28;
 
   return (
-    <Box alignItems='center' flexDirection='column' marginBottom={height > 15 ? 1 : 0} width='100%'>
+    <Box alignItems='center' flexDirection='column' marginBottom={height > 18 ? 1 : 0} width='100%'>
       <Box
         alignItems='center'
         borderColor='cyan'
-        borderStyle={height > 15 ? 'double' : 'single'}
+        borderStyle={showDoubleBorder ? 'double' : 'single'}
         flexDirection='column'
         paddingX={width > 60 ? 4 : 1}
-        paddingY={height > 20 ? 1 : 0}
+        paddingY={height > 22 ? 1 : 0}
       >
         {showBigText ? (
           <Gradient name='atlas'>
             <BigText font='tiny' text='G-DRAFT' />
           </Gradient>
         ) : (
-          <Text bold color='cyan'>
-            G - D R A F T
-          </Text>
+          <Box paddingX={2}>
+            <Text bold color='cyan'>
+              G · D · R · A · F · T
+            </Text>
+          </Box>
         )}
 
-        <Box marginTop={showBigText ? 1 : 0}>
-          <Text bold color='cyan'>
-            AI-POWERED GIT ASSISTANT v{pkg.version}
-          </Text>
+        <Box alignItems='center' flexDirection='column' marginTop={showBigText ? 1 : 0}>
+          <Text color='cyan'>AI-Powered Git Assistant · v{pkg.version}</Text>
+          {height > 12 && (
+            <Text color='gray' dimColor>
+              Project ID: <Text color='magenta'>{paths.getProjectId()}</Text>
+            </Text>
+          )}
         </Box>
       </Box>
 
-      {newVersion && (
-        <Box backgroundColor='yellow' marginTop={1} paddingX={2}>
-          <Text bold color='black'>
-            🚀 UPDATE AVAILABLE: {pkg.version} → {newVersion}. Run `npm i -g g-draft`
+      {newVersion && height > 12 && (
+        <Box marginTop={1} paddingX={2}>
+          <Text color='yellow'>
+            ✨ Update available: {pkg.version} → {newVersion} · Run `npm i -g g-draft`
           </Text>
         </Box>
       )}
 
-      {height > 25 && (
+      {showDecorator && (
         <Box justifyContent='center' marginTop={1} width='100%'>
-          <Text dimColor>————————————————————————————————————————————————————————————————</Text>
+          <Text dimColor>————————————————————————————————————————————————</Text>
         </Box>
       )}
     </Box>

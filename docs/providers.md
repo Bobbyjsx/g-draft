@@ -29,12 +29,12 @@ g-draft integrates with several AI providers. Each provider is implemented as a 
 - **Installation**: Refer to OpenAI Codex documentation.
 - **Configuration**: `gdraft config set provider codex`
 
-### Amazon Q
+### Kiro
 
-- **Provider Name**: `amazon-q`
-- **CLI Tool**: `q`
-- **Installation**: Refer to Amazon Q Developer documentation.
-- **Configuration**: `gdraft config set provider amazon-q`
+- **Provider Name**: `kiro`
+- **CLI Tool**: `kiro-cli`
+- **Installation**: Refer to Kiro Developer documentation.
+- **Configuration**: `gdraft config set provider kiro`
 
 ## Provider Discovery
 

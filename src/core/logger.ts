@@ -15,6 +15,30 @@ export interface LogEntry {
   model?: string;
 }
 
+export function cleanRawThought(thought: string, isCodex = false): string {
+  if (!thought) return '';
+  if (!isCodex) return thought;
+
+  const blocks = thought.split(/\bcodex\b/i);
+  const filteredBlocks: string[] = [];
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const isLast = i === blocks.length - 1;
+    const hasToolExec =
+      block.includes('exec') ||
+      block.includes('Running command:') ||
+      block.includes('succeeded in') ||
+      block.includes('failed in');
+
+    if (hasToolExec || !isLast) {
+      filteredBlocks.push(block);
+    }
+  }
+
+  return filteredBlocks.join('\n').trim();
+}
+
 export class Logger {
   private getLogsDir(): string {
     return paths.getLogsDir();
@@ -30,8 +54,12 @@ export class Logger {
       this.lastLoggedError = entry.error;
     }
 
+    const isCodex = entry.model?.toLowerCase().includes('codex');
+    const cleanedThought = entry.thought ? cleanRawThought(entry.thought, isCodex) : undefined;
+
     const fullEntry: LogEntry = {
       ...entry,
+      thought: cleanedThought,
       timestamp: new Date().toISOString(),
     };
 

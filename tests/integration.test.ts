@@ -32,11 +32,11 @@ describe('Generation Flow Integration', () => {
   const simulateACPStream = async (child: any, thoughts: string[], text: string[]) => {
     // 1. Handshake
     await new Promise((r) => setTimeout(r, 10));
-    child.stdout.emit('data', JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} }) + '\n');
+    child.stdout.emit('data', `${JSON.stringify({ id: 1, jsonrpc: '2.0', result: {} })}\n`);
     await new Promise((r) => setTimeout(r, 10));
     child.stdout.emit(
       'data',
-      JSON.stringify({ id: 2, jsonrpc: '2.0', result: { modelId: 'gemini-3-flash', sessionId: 'sid' } }) + '\n'
+      `${JSON.stringify({ id: 2, jsonrpc: '2.0', result: { modelId: 'gemini-3-flash', sessionId: 'sid' } })}\n`
     );
 
     // 2. Thoughts
@@ -44,11 +44,11 @@ describe('Generation Flow Integration', () => {
       await new Promise((r) => setTimeout(r, 10));
       child.stdout.emit(
         'data',
-        JSON.stringify({
+        `${JSON.stringify({
           jsonrpc: '2.0',
           method: 'session/update',
           params: { update: { content: { text: thought }, sessionUpdate: 'agent_thought_chunk' } },
-        }) + '\n'
+        })}\n`
       );
     }
 
@@ -57,17 +57,17 @@ describe('Generation Flow Integration', () => {
       await new Promise((r) => setTimeout(r, 10));
       child.stdout.emit(
         'data',
-        JSON.stringify({
+        `${JSON.stringify({
           jsonrpc: '2.0',
           method: 'session/update',
           params: { update: { content: { text: t }, sessionUpdate: 'agent_message_chunk' } },
-        }) + '\n'
+        })}\n`
       );
     }
 
     // 4. Done
     await new Promise((r) => setTimeout(r, 10));
-    child.stdout.emit('data', JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} }) + '\n');
+    child.stdout.emit('data', `${JSON.stringify({ id: 3, jsonrpc: '2.0', result: {} })}\n`);
   };
 
   it('should complete a commit generation flow', async () => {

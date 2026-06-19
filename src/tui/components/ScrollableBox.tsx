@@ -19,7 +19,7 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
   content,
   height,
   maxHeight,
-  width,
+  width: rawWidth,
   borderColor = 'gray',
   borderStyle = 'round',
   title,
@@ -27,10 +27,11 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
   autoScroll = false,
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
+  const width = Math.max(rawWidth, 15);
 
   // Improved wrapping using wrap-ansi to preserve indentation and spaces
   const lines = useMemo(() => {
-    const wrapWidth = width - 6; // Padding + Borders + Scrollbar space
+    const wrapWidth = Math.max(width - 7, 10); // Padding + Borders + Scrollbar space + Margin
     // wrap-ansi preserves newlines and handles ANSI codes
     const wrapped = wrapAnsi(content, wrapWidth, { hard: true, trim: false });
     return wrapped.split('\n');
@@ -44,6 +45,7 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
   if (maxHeight && !height) {
     finalHeight = Math.min(totalRequiredHeight, maxHeight);
   }
+  finalHeight = Math.max(finalHeight, 3);
 
   const visibleHeight = finalHeight - borderOverhead - titleOverhead;
   const maxScroll = Math.max(0, lines.length - visibleHeight);
@@ -114,11 +116,9 @@ export const ScrollableBox: React.FC<ScrollableBoxProps> = ({
 
       <Box flexDirection='row' flexGrow={1} width='100%'>
         {/* Content Area */}
-        <Box flexDirection='column' flexGrow={1} overflow='hidden'>
+        <Box flexDirection='column' flexGrow={1} marginLeft={1}>
           {visibleLines.map((line, i) => (
-            <Text key={i} wrap='truncate-end'>
-              {line || ' '}
-            </Text>
+            <Text key={i}>{line || ' '}</Text>
           ))}
           {visibleLines.length === 0 && (
             <Text dimColor italic>

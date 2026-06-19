@@ -1,0 +1,5 @@
+Reading file: [38;5;141m/Users/bobby/Documents/Workspace/g-draft/src/providers/kiro.ts[0m, all lines[38;5;244m (using tool: read)[0m
+[38;5;10m ✓ [0mSuccessfully read [38;5;244m371 bytes[0m from /Users/bobby/Documents/Workspace/g-draft/src/providers/kiro.ts
+[38;5;244m - Completed in 0.0s[0m
+
+[38;5;141m> [0mSimple provider class — extends [38;5;10mBaseProvider[0m, uses [38;5;10mCLIEngine[0m, and invokes [38;5;10mkiro-cli chat --no-interactive --trust-all-tools[0m as its subprocess command.
