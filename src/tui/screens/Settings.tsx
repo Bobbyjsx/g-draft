@@ -1,11 +1,12 @@
 import type React from 'react';
 import { useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { MultilineInput } from 'ink-multiline-input';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import type { Config, ConfigManager } from '../../core/config.js';
 import { Header } from '../components/Header.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 interface SettingsScreenProps {
   configManager: ConfigManager;
@@ -22,9 +23,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   const [tempBranch, setTempBranch] = useState(config.baseBranch);
   const [tempInstructions, setTempInstructions] = useState(config.customInstructions);
   const [instructionTarget, setInstructionTarget] = useState<'global' | 'project'>('global');
-  const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
-  const height = stdout?.rows || 24;
+  const { width, height } = useTerminalDimensions();
 
   const menuItems = [
     { label: 'AI Provider', value: 'provider' },
@@ -35,10 +34,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   ];
 
   const providers = [
+    { label: 'Google Antigravity', value: 'antigravity' },
     { label: 'Google Gemini', value: 'gemini' },
     { label: 'Anthropic Claude', value: 'claude' },
     { label: 'OpenAI Codex', value: 'codex' },
-    { label: 'Amazon Q Developer', value: 'amazon-q' },
+    { label: 'Kiro Developer', value: 'kiro' },
   ];
 
   const handleMenuSelect = (item: { value: string }) => {
@@ -60,13 +60,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
 
   const handleProviderSelect = (item: { value: string }) => {
     configManager.setGlobalConfig('provider', item.value);
-    setConfig({ ...config, provider: item.value as any });
+    const projectConfig = configManager.getProjectConfig();
+    configManager.setProjectConfig({ ...projectConfig, provider: item.value as any });
+    const newConfig = configManager.getMergedConfig();
+    setConfig(newConfig);
     setView('menu');
   };
 
   const handleBranchSubmit = (value: string) => {
     configManager.setGlobalConfig('baseBranch', value);
-    setConfig({ ...config, baseBranch: value });
+    const projectConfig = configManager.getProjectConfig();
+    configManager.setProjectConfig({ ...projectConfig, baseBranch: value });
+    const newConfig = configManager.getMergedConfig();
+    setConfig(newConfig);
     setView('menu');
   };
 

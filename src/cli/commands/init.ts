@@ -15,12 +15,12 @@ export const initCommand = (configManager: ConfigManager, gitService: GitService
 
     const config = {
       baseBranch: defaultBranch,
-      provider: 'gemini' as const,
+      provider: 'antigravity' as const,
     };
 
     configManager.setProjectConfig(config);
     console.log(chalk.green('Initialized .gdraft.json'));
     console.log(chalk.blue('Base branch:'), defaultBranch);
-    console.log(chalk.blue('Provider:'), 'gemini');
+    console.log(chalk.blue('Provider:'), 'antigravity');
   });
 };

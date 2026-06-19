@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
-import { Logger } from '../src/core/logger.js';
+import { cleanRawThought, Logger } from '../src/core/logger.js';
 
 vi.mock('node:fs/promises');
 vi.mock('../src/core/paths.js', () => ({
@@ -13,6 +13,25 @@ vi.mock('../src/core/paths.js', () => ({
 describe('Logger', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('cleanRawThought', () => {
+    it('should return original thought if not Codex', () => {
+      const thought = 'some thought\ncodex\nsome other response';
+      expect(cleanRawThought(thought, false)).toBe(thought);
+    });
+
+    it('should return empty string if Codex thought matches response only without tools', () => {
+      const thought = 'Hi bob\nfeat(core): include file summary in promptstokens used\n10,348\n';
+      expect(cleanRawThought(thought, true)).toBe('');
+    });
+
+    it('should preserve actual tool runs and strip final response for Codex', () => {
+      const thought =
+        'I’m reading the provided diff file directly... exec\ncat /var/folders/...\n succeeded\ncodex\nHi bob\n\n## Description\n...tokens used\n3,967\n';
+      const expected = 'I’m reading the provided diff file directly... exec\ncat /var/folders/...\n succeeded';
+      expect(cleanRawThought(thought, true)).toBe(expected);
+    });
   });
 
   it('should log an action to a JSON file and summary', async () => {

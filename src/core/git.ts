@@ -9,6 +9,16 @@ export interface DiffOptions {
   baseBranch?: string;
 }
 
+export const DEFAULT_DIFF_EXCLUDES = [
+  ':!package-lock.json',
+  ':!pnpm-lock.yaml',
+  ':!yarn.lock',
+  ':!bun.lockb',
+  ':!*.lock',
+  ':!dist/*',
+  ':!node_modules/*',
+];
+
 export class GitService {
   async isRepo(): Promise<boolean> {
     try {
@@ -66,22 +76,26 @@ export class GitService {
     }
   }
 
+  /**
+   * Resolves comparison targets and retrieves the actual line-by-line unified git diff.
+   * Depending on options or active auto-detection, it retrieves staged, branch-level,
+   * unstaged, or last-commit changes.
+   *
+   * Difference from getDiffStat/getDiffData:
+   * - getDiff: Returns the full, line-by-line content of the diff.
+   * - getDiffStat: Returns only the file summary/statistics of changes.
+   * - getDiffData: Runs both getDiff and getDiffStat in parallel.
+   *
+   * @param options Config options specifying the comparison mode ('staged', 'branch', 'last_commit', or 'auto') and base branch.
+   * @returns An object containing the raw diff content, the exact git command executed, and the resolved comparison mode.
+   */
   async getDiff(options: DiffOptions = {}): Promise<{ diff: string; command: string; mode: string }> {
     const { mode = 'auto', baseBranch = 'main' } = options;
-    const excludePattern = [
-      ':!package-lock.json',
-      ':!pnpm-lock.yaml',
-      ':!yarn.lock',
-      ':!bun.lockb',
-      ':!*.lock',
-      ':!dist/*',
-      ':!node_modules/*',
-    ];
 
     try {
       if (mode === 'staged') {
         const cmd = 'git --no-pager diff --cached';
-        const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached', '--', '.', ...excludePattern]);
+        const { stdout } = await execa('git', ['--no-pager', 'diff', '--cached', '--', '.', ...DEFAULT_DIFF_EXCLUDES]);
         return { command: cmd, diff: stdout, mode: 'staged' };
       }
 
@@ -97,12 +111,19 @@ export class GitService {
               'HEAD',
               '--',
               '.',
-              ...excludePattern,
+              ...DEFAULT_DIFF_EXCLUDES,
             ]);
             return { command: cmd, diff: firstCommit, mode: 'first_commit' };
           }
           const cmd = 'git --no-pager diff HEAD~1..HEAD';
-          const { stdout: lastCommit } = await execa('git', ['--no-pager', 'diff', 'HEAD~1..HEAD', '--', '.', ...excludePattern]);
+          const { stdout: lastCommit } = await execa('git', [
+            '--no-pager',
+            'diff',
+            'HEAD~1..HEAD',
+            '--',
+            '.',
+            ...DEFAULT_DIFF_EXCLUDES,
+          ]);
           return { command: cmd, diff: lastCommit, mode: 'last_commit' };
         }
         return { command: '', diff: '', mode: 'none' };
@@ -113,12 +134,12 @@ export class GitService {
           const { stdout: mergeBase } = await execa('git', ['--no-pager', 'merge-base', baseBranch, 'HEAD']);
           const mb = mergeBase.trim();
           const cmd = `git --no-pager merge-base ${baseBranch} HEAD && git --no-pager diff ${mb}`;
-          const { stdout } = await execa('git', ['--no-pager', 'diff', mb, '--', '.', ...excludePattern]);
+          const { stdout } = await execa('git', ['--no-pager', 'diff', mb, '--', '.', ...DEFAULT_DIFF_EXCLUDES]);
           return { command: cmd, diff: stdout, mode: 'branch' };
         } catch {
           // Fallback to triple-dot if merge-base fails
           const cmd = `git --no-pager diff ${baseBranch}...`;
-          const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`, '--', '.', ...excludePattern]);
+          const { stdout } = await execa('git', ['--no-pager', 'diff', `${baseBranch}...`, '--', '.', ...DEFAULT_DIFF_EXCLUDES]);
           return { command: cmd, diff: stdout, mode: 'branch' };
         }
       }
@@ -141,7 +162,7 @@ export class GitService {
     // 3. If on base branch, show unstaged changes
     try {
       const cmd = 'git --no-pager diff';
-      const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff', '--', '.', ...excludePattern]);
+      const { stdout: unstaged } = await execa('git', ['--no-pager', 'diff', '--', '.', ...DEFAULT_DIFF_EXCLUDES]);
       if (unstaged) return { command: cmd, diff: unstaged, mode: 'unstaged' };
     } catch {
       // Ignore
@@ -151,9 +172,20 @@ export class GitService {
     return this.getDiff({ mode: 'last_commit' });
   }
 
+  /**
+   * Retrieves high-level git diff summary statistics (`git diff --stat`), showing
+   * which files changed and the number of insertions/deletions per file.
+   *
+   * Difference from getDiff/getDiffData:
+   * - getDiffStat: Fast and lightweight, returning only file lists and change counts.
+   * - getDiff: Fetches full code diffs, which can be extremely large.
+   * - getDiffData: Combines both.
+   *
+   * @param options Config options matching the diff target options.
+   * @returns A string summary of file diff statistics.
+   */
   async getDiffStat(options: DiffOptions = {}): Promise<string> {
     const { mode = 'auto', baseBranch = 'main' } = options;
-    const excludePattern = [':!package-lock.json', ':!pnpm-lock.yaml', ':!yarn.lock', ':!bun.lockb', ':!*.lock'];
 
     try {
       const args = ['--no-pager', 'diff', '--stat'];
@@ -161,12 +193,32 @@ export class GitService {
       else if (mode === 'last_commit') args.push('HEAD~1..HEAD');
       else if (mode === 'branch') args.push(baseBranch);
 
-      args.push('--', '.', ...excludePattern);
+      args.push('--', '.', ...DEFAULT_DIFF_EXCLUDES);
       const { stdout } = await execa('git', args);
       return stdout.trim();
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Concurrently retrieves both the line-by-line unified diff and the file summary statistics
+   * in parallel using Promise.all to minimize command execution overhead.
+   *
+   * Difference from getDiff/getDiffStat:
+   * - getDiffData: Orchestrates getDiff and getDiffStat concurrently for operations that need both.
+   *
+   * @param options Config options for diff retrieval.
+   * @returns Concurrently fetched diff content, stat summary, and mode.
+   */
+  async getDiffData(options: DiffOptions = {}): Promise<{ diff: string; stat: string; mode: string }> {
+    const [diffResult, stat] = await Promise.all([this.getDiff(options), this.getDiffStat(options)]);
+
+    return {
+      diff: diffResult.diff,
+      mode: diffResult.mode,
+      stat,
+    };
   }
 
   static formatMode(m?: string): string {

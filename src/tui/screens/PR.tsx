@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
 import { cacheManager } from '../../core/cache.js';
@@ -11,9 +11,10 @@ import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
-import { useAIGenerator } from '../hooks/useAIGenerator.js';
+import { getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
 import { useClipboard } from '../hooks/useClipboard.js';
 import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 interface PRScreenProps {
   gitService: GitService;
@@ -26,12 +27,12 @@ interface PRScreenProps {
 export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvider, setLoading }) => {
   const [editing, setEditing] = useState<boolean>(false);
   const [diff, setDiff] = useState<string>('');
-  const [diffStat, setDiffStat] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
   const [branch, setBranch] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const { width, height } = useTerminalDimensions();
 
   const metadata = useMemo(() => ({ branch }), [branch]);
 
@@ -51,33 +52,28 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
     setLastMetadata,
   } = useAIGenerator({
     action: 'pr',
+    config,
     diff,
     diffPath,
-    prompt: diffStat ? `FILE SUMMARY:\n${diffStat}\n\n${prompt}` : prompt,
+    metadata,
+    prompt,
     provider: aiProvider,
     setGlobalLoading: setLoading,
   });
 
   const loadingText = useLoadingMessages('pr', internalLoading || dataLoading, { branch });
   const { copy, copied } = useClipboard();
-  const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
-  const height = stdout?.rows || 24;
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     // Parallelize git info, branch, diff loading, and AI pre-warming
-    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm() : Promise.resolve();
 
     try {
-      const [info, currentBranch, diffResult, stat] = await Promise.all([
+      const [info, currentBranch, diffData] = await Promise.all([
         gitService.getProjectInfo(),
         gitService.getCurrentBranch(),
         gitService.getDiff({
-          baseBranch: config.baseBranch,
-          mode: 'auto',
-        }),
-        gitService.getDiffStat({
           baseBranch: config.baseBranch,
           mode: 'auto',
         }),
@@ -85,18 +81,16 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
       ]);
 
       setBranch(currentBranch);
-      setDiffStat(stat);
+      setDiff(diffData.diff);
 
-      const { diff: d } = diffResult;
-      if (!d) {
+      if (!diffData.diff) {
         setError('No changes found for PR. Compare with base branch.');
         setDataLoading(false);
         return;
       }
-      setDiff(d);
 
       // Save to temp file
-      const path = await gitService.saveDiffToTempFile(d);
+      const path = await gitService.saveDiffToTempFile(diffData.diff);
       setDiffPath(path);
 
       const promptOptions = {
@@ -105,12 +99,12 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
       };
 
       const template = await gitService.getPRTemplate();
-      const p = template ? PROMPTS.PR_WITH_TEMPLATE(template, d, promptOptions) : PROMPTS.PR_NO_TEMPLATE(d, promptOptions);
+      const p = template ? PROMPTS.PR_WITH_TEMPLATE(template, path, promptOptions) : PROMPTS.PR_NO_TEMPLATE(path, promptOptions);
       setPrompt(p);
 
       // Check cache
       const cached = cacheManager.get('pr');
-      if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
+      if (cached && cached.diffHash === cacheManager.generateDiffHash(diffData.diff)) {
         setPrContent(cached.content);
         setLastGeneratedAt(cached.timestamp);
         setLastMetadata(cached.metadata ?? null);
@@ -193,8 +187,26 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
               <Text bold color='blue'>
                 AGENT PROGRESS
               </Text>
-              <Box marginTop={1}>
-                <ScrollableBox autoScroll content={thought} maxHeight={8} width={contentWidth - 4} />
+              <Box flexDirection='column' marginTop={1}>
+                {(() => {
+                  const items = getCleanThoughts(thought);
+                  if (items.length === 0) {
+                    return (
+                      <Text color='cyan'>
+                        <Spinner type='dots' /> Thinking...
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Box flexDirection='column'>
+                      {items.slice(-7).map((item, index) => (
+                        <Text color='yellow' key={index}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </Box>
+                  );
+                })()}
               </Box>
             </Box>
           )}

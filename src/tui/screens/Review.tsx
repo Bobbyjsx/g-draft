@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
@@ -10,9 +10,10 @@ import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
-import { useAIGenerator } from '../hooks/useAIGenerator.js';
+import { getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
 import { useClipboard } from '../hooks/useClipboard.js';
 import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 interface ReviewScreenProps {
   gitService: GitService;
@@ -28,6 +29,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const { width, height } = useTerminalDimensions();
 
   const promptOptions = useMemo(
     () => ({
@@ -37,7 +39,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
     [config.customInstructions, projectInfo]
   );
 
-  const prompt = useMemo(() => (diff ? PROMPTS.REVIEW(diff, promptOptions) : ''), [diff, promptOptions]);
+  const prompt = useMemo(() => (diffPath ? PROMPTS.REVIEW(diffPath, promptOptions) : ''), [diffPath, promptOptions]);
 
   const {
     generate,
@@ -53,6 +55,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
     setLastGeneratedAt,
   } = useAIGenerator({
     action: 'review',
+    config,
     diff,
     diffPath,
     prompt,
@@ -62,14 +65,11 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
 
   const loadingText = useLoadingMessages('review', internalLoading || dataLoading);
   const { copy, copied } = useClipboard();
-  const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
-  const height = stdout?.rows || 24;
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     // Parallelize git info, diff loading, and AI pre-warming
-    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm() : Promise.resolve();
 
     try {
       const [info, diffResult] = await Promise.all([
@@ -143,7 +143,6 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
     );
   }
 
-  const _isActuallyLoading = internalLoading || dataLoading || (diff && !review && !error);
   const showResult = !!review;
   const showHeader = height > 15;
   const showSecondaryInfo = width > 70 && height > 20;
@@ -168,8 +167,26 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ gitService, config, 
               <Text bold color='magenta'>
                 AGENT PROGRESS
               </Text>
-              <Box marginTop={1}>
-                <ScrollableBox autoScroll content={thought} maxHeight={8} width={contentWidth - 4} />
+              <Box flexDirection='column' marginTop={1}>
+                {(() => {
+                  const items = getCleanThoughts(thought);
+                  if (items.length === 0) {
+                    return (
+                      <Text color='cyan'>
+                        <Spinner type='dots' /> Thinking...
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Box flexDirection='column'>
+                      {items.slice(-7).map((item, index) => (
+                        <Text color='yellow' key={index}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </Box>
+                  );
+                })()}
               </Box>
             </Box>
           )}

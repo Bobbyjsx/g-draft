@@ -1,6 +1,6 @@
 ## Description
 
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
+<!--Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.-->
 
 Fixes # (issue)
 
@@ -15,14 +15,14 @@ Fixes # (issue)
 
 ## How Has This Been Tested?
 
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration.
+<!--Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration.-->
 
 - [ ] **Automated Tests**: (e.g., `pnpm test`)
 - [ ] **Manual Verification**: (e.g., ran `gdraft commit` and verified output)
 
 ## TUI Changes (if applicable)
 
-If this PR affects the TUI (Terminal User Interface), please provide screenshots, GIFs, or a brief description of the visual changes.
+<!--If this PR affects the TUI (Terminal User Interface), please provide screenshots, GIFs, or a brief description of the visual changes.-->
 
 ## Checklist
 

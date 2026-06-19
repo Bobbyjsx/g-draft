@@ -98,7 +98,7 @@ npm install -g gdraft
 
 - **Gemini**: `npm install -g @google/gemini-cli`
 - **Claude**: `npm install -g @anthropic-ai/claude-code`
-- **Amazon Q**: [AWS Q Setup](https://aws.amazon.com/q/developer/)
+- **Kiro**: [Kiro Developer Setup](https://kiro.dev)
 - **Codex**: [OpenAI Codex Setup](https://openai.com/blog/openai-codex)
 
 Verify detection:
@@ -117,7 +117,9 @@ gdraft providers
 ```json
 {
   "baseBranch": "main",
-  "provider": "claude"
+  "provider": "claude",
+  "enableSummary": false,
+  "customInstructions": "Use Conventional Commits. Include issue ID if available."
 }
 ```
 

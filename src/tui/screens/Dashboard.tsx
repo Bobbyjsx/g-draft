@@ -1,12 +1,12 @@
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
 import type { Screen } from '../App.js';
 import type { Config } from '../../core/config.js';
 import type { GitService } from '../../core/git.js';
-import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 interface DashboardProps {
   gitService: GitService;
@@ -19,22 +19,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
   const [currentBranch, setCurrentBranch] = useState<string>('');
   const [stagedChanges, setStagedChanges] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
-  const height = stdout?.rows || 24;
+  const { width, height } = useTerminalDimensions();
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       if (!(await gitService.isRepo())) {
-        setError('Not a git repository. Please run gdraft inside a git repo.');
-        setLoading(false);
+        setError('Not a git repository');
         return;
       }
+
       const branch = await gitService.getCurrentBranch();
       setCurrentBranch(branch);
       const diff = await gitService.getDiff({ mode: 'staged' });
-      setStagedChanges(!!diff);
+      setStagedChanges(!!diff.diff);
     } catch (e: any) {
       setError(`Error loading git status: ${e.stderr || e.message}`);
     } finally {
@@ -44,52 +42,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
 
   useEffect(() => {
     loadStatus();
-    return () => setLoading(false);
-  }, [loadStatus, setLoading]);
+  }, [loadStatus]);
+
+  const handleSelect = (item: { value: string }) => {
+    onSelect(item.value as Screen);
+  };
 
   const items = [
     {
-      desc: 'Automate conventional commits',
-      label: `Clean & Commit ${stagedChanges ? '' : '(No staged changes)'}`,
-      value: 'commit' as Screen,
+      label: stagedChanges ? 'Generate Commit Message (Staged)' : 'Generate Commit Message (Auto)',
+      value: 'commit',
     },
-    {
-      desc: 'Create context-aware pull request descriptions',
-      label: 'Generate PR',
-      value: 'pr' as Screen,
-    },
-    {
-      desc: 'AI-powered code review for bugs and security',
-      label: 'Audit Changes',
-      value: 'review' as Screen,
-    },
-    {
-      desc: 'Check installation of AI CLI tools',
-      label: 'AI Providers Status',
-      value: 'providers-status' as Screen,
-    },
-    {
-      desc: 'Configure providers and defaults',
-      label: 'Settings',
-      value: 'settings' as Screen,
-    },
+    { label: 'Generate PR Description', value: 'pr' },
+    { label: 'Perform Code Review', value: 'review' },
+    { label: 'Settings', value: 'settings' },
+    { label: 'AI Provider Status', value: 'providers-status' },
   ];
-
-  const handleSelect = (item: { value: Screen }) => {
-    onSelect(item.value);
-  };
 
   if (error) {
     return (
-      <ErrorScreen
-        error={error}
-        onHome={() => setError(null)}
-        onQuit={() => process.exit()}
-        onRetry={() => {
-          setError(null);
-          loadStatus();
-        }}
-      />
+      <Box alignItems='center' flexDirection='column' height='100%' justifyContent='center'>
+        <Header />
+        <Box marginTop={1}>
+          <Text color='red'>Error: {error}</Text>
+        </Box>
+        <Box marginTop={1}>
+          <Text color='gray'>Press Q to exit</Text>
+        </Box>
+      </Box>
     );
   }
 

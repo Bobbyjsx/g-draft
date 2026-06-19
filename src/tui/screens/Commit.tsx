@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
 import { cacheManager } from '../../core/cache.js';
@@ -11,9 +11,10 @@ import type { AIProvider } from '../../providers/index.js';
 import { ErrorScreen } from '../components/ErrorScreen.js';
 import { Header } from '../components/Header.js';
 import { ScrollableBox } from '../components/ScrollableBox.js';
-import { useAIGenerator } from '../hooks/useAIGenerator.js';
+import { getCleanThoughts, useAIGenerator } from '../hooks/useAIGenerator.js';
 import { useClipboard } from '../hooks/useClipboard.js';
 import { useLoadingMessages } from '../hooks/useLoadingMessages.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 interface CommitScreenProps {
   gitService: GitService;
@@ -27,12 +28,12 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   const [editing, setEditing] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'committing' | 'done'>('idle');
   const [diff, setDiff] = useState<string>('');
-  const [diffStat, setDiffStat] = useState<string>('');
   const [diffPath, setDiffPath] = useState<string>('');
   const [projectInfo, setProjectInfo] = useState<{ id: string; name: string; path: string } | null>(null);
   const [mode, setMode] = useState<string>('staged');
   const [isCached, setIsCached] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const { width, height } = useTerminalDimensions();
 
   const metadata = useMemo(() => ({ mode }), [mode]);
   const promptOptions = useMemo(
@@ -44,10 +45,9 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
   );
 
   const prompt = useMemo(() => {
-    if (!diff) return '';
-    const mainPrompt = PROMPTS.COMMIT(diff, promptOptions);
-    return diffStat ? `FILE SUMMARY:\n${diffStat}\n\n${mainPrompt}` : mainPrompt;
-  }, [diff, diffStat, promptOptions]);
+    if (!diffPath) return '';
+    return PROMPTS.COMMIT(diffPath, promptOptions);
+  }, [diffPath, promptOptions]);
 
   const {
     generate,
@@ -65,6 +65,7 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
     setLastMetadata,
   } = useAIGenerator({
     action: 'commit',
+    config,
     diff,
     diffPath,
     metadata,
@@ -75,23 +76,16 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
 
   const loadingText = useLoadingMessages('commit', internalLoading || dataLoading, { mode });
   const { copy, copied } = useClipboard();
-  const { stdout } = useStdout();
-  const width = stdout?.columns || 80;
-  const height = stdout?.rows || 24;
 
   const loadData = useCallback(async () => {
     setDataLoading(true);
     // Parallelize git info, diff loading, and AI pre-warming
-    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm('gemini-3-flash') : Promise.resolve();
+    const prewarmTask = aiProvider.prewarm ? aiProvider.prewarm() : Promise.resolve();
 
     try {
-      const [info, diffResult, stat] = await Promise.all([
+      const [info, diffData] = await Promise.all([
         gitService.getProjectInfo(),
         gitService.getDiff({
-          baseBranch: config.baseBranch,
-          mode: 'auto',
-        }),
-        gitService.getDiffStat({
           baseBranch: config.baseBranch,
           mode: 'auto',
         }),
@@ -99,24 +93,22 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
       ]);
 
       setProjectInfo(info);
-      setDiffStat(stat);
+      setDiff(diffData.diff);
+      setMode(diffData.mode);
 
-      const { diff: d, mode: m } = diffResult;
-      if (!d) {
+      if (!diffData.diff) {
         setError('No changes found. Stage some files first or ensure there are changes.');
         setDataLoading(false);
         return;
       }
-      setDiff(d);
-      setMode(m);
 
       // Save to temp file for vendor processing
-      const path = await gitService.saveDiffToTempFile(d);
+      const path = await gitService.saveDiffToTempFile(diffData.diff);
       setDiffPath(path);
 
       // Check cache
       const cached = cacheManager.get('commit');
-      if (cached && cached.diffHash === cacheManager.generateDiffHash(d)) {
+      if (cached && cached.diffHash === cacheManager.generateDiffHash(diffData.diff)) {
         setMessage(cached.content);
         setLastGeneratedAt(cached.timestamp);
         setLastMetadata(cached.metadata ?? null);
@@ -249,7 +241,25 @@ export const CommitScreen: React.FC<CommitScreenProps> = ({ gitService, config, 
                     AGENT PROGRESS
                   </Text>
                 </Box>
-                <ScrollableBox autoScroll content={thought} maxHeight={6} width={contentWidth - 4} />
+                {(() => {
+                  const items = getCleanThoughts(thought);
+                  if (items.length === 0) {
+                    return (
+                      <Text color='yellow'>
+                        <Spinner type='dots' /> Thinking...
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Box flexDirection='column'>
+                      {items.slice(-5).map((item, index) => (
+                        <Text color='yellow' key={index}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </Box>
+                  );
+                })()}
               </Box>
             )}
           </Box>
