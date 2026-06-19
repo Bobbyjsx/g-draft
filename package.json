@@ -72,6 +72,10 @@
       "ws": "^8.21.0"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bobbyjsx/g-draft"
+  },
   "scripts": {
     "biome:fixAll": "biome check --fix --no-errors-on-unmatched",
     "build": "tsc",
