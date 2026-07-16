@@ -1,5 +1,11 @@
 # g-draft
 
+## 0.4.2
+
+### Patch Changes
+
+- 6b03ac4: Force version bump to bypass already published version on npm registry.
+
 ## 0.4.1
 
 ### Patch Changes
