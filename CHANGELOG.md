@@ -1,5 +1,11 @@
 # g-draft
 
+## 0.4.3
+
+### Patch Changes
+
+- 172c4c2: Fix "write EPIPE" crashes when using agentic providers like Kiro and Antigravity. By disabling `stdin` diff injection for providers that natively read the diff file path, we prevent Node.js from stalling on closed OS pipes.
+
 ## 0.4.2
 
 ### Patch Changes
