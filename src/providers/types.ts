@@ -19,6 +19,7 @@ export interface AIProvider {
 export interface EngineOptions {
   command: string;
   nonInteractiveFlags: string[];
+  disableStdin?: boolean;
 }
 
 export interface AIEngine {

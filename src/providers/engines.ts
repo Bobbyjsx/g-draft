@@ -268,7 +268,7 @@ export class ACPEngine implements AIEngine {
       this.setupListeners();
 
       let input = '';
-      if (diffPath && fs.existsSync(diffPath)) {
+      if (!options.disableStdin && diffPath && fs.existsSync(diffPath)) {
         input = fs.readFileSync(diffPath, 'utf8');
       }
       const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
@@ -355,7 +355,7 @@ export class ACPEngine implements AIEngine {
     this.thoughtQueue = [];
 
     let input = '';
-    if (diffPath && fs.existsSync(diffPath)) {
+    if (!options.disableStdin && diffPath && fs.existsSync(diffPath)) {
       input = fs.readFileSync(diffPath, 'utf8');
     }
     const fullPrompt = input ? `${input}\n\n${prompt}` : prompt;
@@ -414,7 +414,7 @@ export class CLIEngine implements AIEngine {
     if (this.isDisposing) return;
 
     let input = '';
-    if (diffPath && fs.existsSync(diffPath)) {
+    if (!options.disableStdin && diffPath && fs.existsSync(diffPath)) {
       input = fs.readFileSync(diffPath, 'utf8');
     }
 

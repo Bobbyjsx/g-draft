@@ -12,6 +12,7 @@ export class KiroProvider extends BaseProvider {
   command = 'kiro-cli';
   installGuide = 'Check Kiro Developer CLI installation instructions.';
   protected nonInteractiveFlags = ['chat', '--no-interactive', '--trust-all-tools'];
+  protected disableStdin = true;
   protected engine = new CLIEngine();
 
   override async stream(

@@ -6,6 +6,7 @@ export class AntigravityProvider extends BaseProvider {
   command = 'agy';
   installGuide = 'curl -fsSL https://antigravity.google/cli/install.sh | bash';
   protected nonInteractiveFlags = ['--print', '--dangerously-skip-permissions'];
+  protected disableStdin = true;
   protected engine = new CLIEngine({ parseThoughts: true });
 
   decoratePrompt(prompt: string): string {

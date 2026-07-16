@@ -7,6 +7,7 @@ export abstract class BaseProvider implements AIProvider {
   protected abstract command: string;
   protected abstract nonInteractiveFlags: string[];
   protected abstract engine: AIEngine;
+  protected disableStdin = false;
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -61,12 +62,22 @@ export abstract class BaseProvider implements AIProvider {
       }
     }
 
-    await this.engine.stream(finalPrompt, handlers, { command: this.command, nonInteractiveFlags: flags }, diffPath, isInternal);
+    await this.engine.stream(
+      finalPrompt,
+      handlers,
+      { command: this.command, disableStdin: this.disableStdin, nonInteractiveFlags: flags },
+      diffPath,
+      isInternal
+    );
   }
 
   async prewarm(modelId?: string): Promise<void> {
     if (this.engine.prewarm) {
-      await this.engine.prewarm(modelId, { command: this.command, nonInteractiveFlags: this.nonInteractiveFlags });
+      await this.engine.prewarm(modelId, {
+        command: this.command,
+        disableStdin: this.disableStdin,
+        nonInteractiveFlags: this.nonInteractiveFlags,
+      });
     }
   }
 
