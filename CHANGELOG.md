@@ -1,5 +1,11 @@
 # g-draft
 
+## 0.4.1
+
+### Patch Changes
+
+- a816907: Fix TUI scrolling, Kiro streaming with ANSI prompts, and Windows clipboard emojis.
+
 ## 0.4.0
 
 ### Minor Changes
