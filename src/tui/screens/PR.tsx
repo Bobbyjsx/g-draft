@@ -1,8 +1,8 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { MultilineInput } from 'ink-multiline-input';
 import Spinner from 'ink-spinner';
-import TextInput from 'ink-text-input';
 import { cacheManager } from '../../core/cache.js';
 import type { Config } from '../../core/config.js';
 import type { GitService } from '../../core/git.js';
@@ -139,8 +139,14 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
     }
   }, [prompt, prContent, internalLoading, error, generate, isCached, dataLoading, hasAttempted]);
 
-  useInput((input, _key) => {
-    if (internalLoading || dataLoading || editing) return;
+  useInput((input, key) => {
+    if (internalLoading || dataLoading) return;
+
+    if (editing) {
+      if (key.escape) setEditing(false);
+      return;
+    }
+
     if (input === 'r') {
       setIsCached(false);
       generate();
@@ -244,7 +250,12 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
                     PR Description (Editing)
                   </Text>
                   <Box flexGrow={1} overflow='hidden'>
-                    <TextInput onChange={setPrContent} onSubmit={() => setEditing(false)} value={prContent} />
+                    <MultilineInput
+                      focus={editing}
+                      maxRows={Math.max(5, height - 12)}
+                      onChange={setPrContent}
+                      value={prContent}
+                    />
                   </Box>
                 </Box>
               ) : (
@@ -296,7 +307,7 @@ export const PRScreen: React.FC<PRScreenProps> = ({ gitService, config, aiProvid
 
       {editing && (
         <Box justifyContent='center' marginTop={1}>
-          <Text color='yellow'>Press [Enter] to save changes.</Text>
+          <Text color='yellow'>Press [Esc] to save changes.</Text>
         </Box>
       )}
     </Box>

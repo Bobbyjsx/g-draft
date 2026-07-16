@@ -26,8 +26,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   const { width, height } = useTerminalDimensions();
 
   const menuItems = [
-    { label: 'AI Provider', value: 'provider' },
-    { label: 'Base Branch', value: 'branch' },
+    { label: 'Global AI Provider', value: 'provider-global' },
+    { label: 'Project AI Provider', value: 'provider-project' },
+    { label: 'Global Base Branch', value: 'branch-global' },
+    { label: 'Project Base Branch', value: 'branch-project' },
     { label: 'Global Instructions', value: 'instructions-global' },
     { label: 'Project Instructions', value: 'instructions-project' },
     { label: 'Back to Dashboard', value: 'back' },
@@ -44,6 +46,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   const handleMenuSelect = (item: { value: string }) => {
     if (item.value === 'back') {
       onBack();
+    } else if (item.value === 'provider-global' || item.value === 'provider-project') {
+      setInstructionTarget(item.value === 'provider-global' ? 'global' : 'project');
+      setView('provider');
+    } else if (item.value === 'branch-global' || item.value === 'branch-project') {
+      setInstructionTarget(item.value === 'branch-global' ? 'global' : 'project');
+      const conf = item.value === 'branch-global' ? configManager.getGlobalConfig() : configManager.getProjectConfig();
+      setTempBranch(conf.baseBranch || '');
+      setView('branch');
     } else if (item.value === 'instructions-global') {
       setInstructionTarget('global');
       setTempInstructions(configManager.getGlobalConfig().customInstructions);
@@ -59,18 +69,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
   };
 
   const handleProviderSelect = (item: { value: string }) => {
-    configManager.setGlobalConfig('provider', item.value);
-    const projectConfig = configManager.getProjectConfig();
-    configManager.setProjectConfig({ ...projectConfig, provider: item.value as any });
+    if (instructionTarget === 'global') {
+      configManager.setGlobalConfig('provider', item.value);
+    } else {
+      const projectConfig = configManager.getProjectConfig();
+      configManager.setProjectConfig({ ...projectConfig, provider: item.value as any });
+    }
     const newConfig = configManager.getMergedConfig();
     setConfig(newConfig);
     setView('menu');
   };
 
   const handleBranchSubmit = (value: string) => {
-    configManager.setGlobalConfig('baseBranch', value);
-    const projectConfig = configManager.getProjectConfig();
-    configManager.setProjectConfig({ ...projectConfig, baseBranch: value });
+    if (instructionTarget === 'global') {
+      configManager.setGlobalConfig('baseBranch', value);
+    } else {
+      const projectConfig = configManager.getProjectConfig();
+      configManager.setProjectConfig({ ...projectConfig, baseBranch: value });
+    }
     const newConfig = configManager.getMergedConfig();
     setConfig(newConfig);
     setView('menu');
@@ -123,7 +139,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
                 Settings
               </Text>
             </Box>
-            <SelectInput items={menuItems} onSelect={handleMenuSelect} />
+            <SelectInput items={menuItems} limit={Math.max(3, height - 12)} onSelect={handleMenuSelect} />
             {height > 15 && (
               <Box flexDirection='column' marginTop={1} paddingTop={1}>
                 <Box>
@@ -147,10 +163,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
           <Box borderColor='cyan' borderStyle='round' flexDirection='column' paddingX={width > 60 ? 4 : 1} paddingY={1}>
             <Box marginBottom={1}>
               <Text bold color='cyan'>
-                AI Provider
+                {instructionTarget === 'global' ? 'Global' : 'Project'} AI Provider
               </Text>
             </Box>
-            <SelectInput items={providers} onSelect={handleProviderSelect} />
+            <SelectInput items={providers} limit={Math.max(3, height - 12)} onSelect={handleProviderSelect} />
           </Box>
         )}
 
@@ -158,7 +174,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ configManager, c
           <Box borderColor='magenta' borderStyle='round' flexDirection='column' paddingX={width > 60 ? 4 : 1} paddingY={1}>
             <Box marginBottom={1}>
               <Text bold color='magenta'>
-                Base Branch
+                {instructionTarget === 'global' ? 'Global' : 'Project'} Base Branch
               </Text>
             </Box>
             <Box flexDirection='row'>

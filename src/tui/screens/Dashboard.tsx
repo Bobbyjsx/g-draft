@@ -93,6 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ gitService, config, onSele
               </Box>
             )}
             items={items}
+            limit={Math.max(3, height - 12)}
             onSelect={handleSelect}
           />
         </Box>

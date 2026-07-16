@@ -11,7 +11,7 @@ export class KiroProvider extends BaseProvider {
   name = 'kiro';
   command = 'kiro-cli';
   installGuide = 'Check Kiro Developer CLI installation instructions.';
-  protected nonInteractiveFlags = ['chat', '--no-interactive', '--trust-tools=fs_read,fs_find,grep_search'];
+  protected nonInteractiveFlags = ['chat', '--no-interactive', '--trust-all-tools'];
   protected engine = new CLIEngine();
 
   override async stream(
@@ -33,12 +33,13 @@ export class KiroProvider extends BaseProvider {
         }
 
         buffer += text;
-        const startIdx = buffer.indexOf('> ');
+        const cleanBuffer = stripAnsi(buffer);
+        const startIdx = cleanBuffer.indexOf('> ');
         if (startIdx !== -1) {
           seenResponseStart = true;
-          const responsePart = buffer.substring(startIdx + 2);
+          const responsePart = cleanBuffer.substring(startIdx + 2);
           if (responsePart) {
-            handlers.onText(stripAnsi(responsePart));
+            handlers.onText(responsePart);
           }
           buffer = '';
         }

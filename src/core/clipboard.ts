@@ -8,7 +8,15 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     }
 
     if (process.platform === 'win32') {
-      await execa('clip', { input: text });
+      await execa(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          '[Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $input | Set-Clipboard',
+        ],
+        { input: text }
+      );
       return true;
     }
 

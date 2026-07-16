@@ -214,9 +214,25 @@ describe('AI Providers', () => {
       expect(handlers.onText).toHaveBeenCalledWith('Kiro response');
       expect(vi.mocked(execa)).toHaveBeenCalledWith(
         'kiro-cli',
-        ['chat', '--no-interactive', '--trust-tools=fs_read,fs_find,grep_search', 'hello'],
+        ['chat', '--no-interactive', '--trust-all-tools', 'hello'],
         expect.any(Object)
       );
+    });
+
+    it('should correctly strip ANSI codes from prompt prefix to prevent streaming hangs', async () => {
+      const provider = new KiroProvider();
+      const child = createMockChild();
+      (vi.mocked(execa) as any).mockReturnValue(child);
+
+      const handlers = { onText: vi.fn() };
+      const streamPromise = provider.stream('hello', handlers);
+
+      // Kiro outputs ANSI codes around the prompt prefix, which broke detection
+      child.stdout.emit('data', '\u001b[38;5;141m> \u001b[0mAnsi encoded response\u001b[0m');
+      child.emit('close', 0);
+
+      await streamPromise;
+      expect(handlers.onText).toHaveBeenCalledWith('Ansi encoded response');
     });
   });
 });
