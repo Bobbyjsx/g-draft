@@ -76,6 +76,25 @@ export class GitService {
     }
   }
 
+  async getValidBaseBranch(requestedBase: string): Promise<string> {
+    try {
+      await execa('git', ['--no-pager', 'rev-parse', '--verify', requestedBase]);
+      return requestedBase;
+    } catch {
+      try {
+        const { stdout } = await execa('git', ['--no-pager', 'symbolic-ref', 'refs/remotes/origin/HEAD']);
+        const branch = stdout.trim().split('/').pop();
+        if (branch) return branch;
+      } catch {}
+      try {
+        const { stdout } = await execa('git', ['--no-pager', 'branch', '--list', 'master', 'main']);
+        if (stdout.includes('main')) return 'main';
+        if (stdout.includes('master')) return 'master';
+      } catch {}
+      return requestedBase;
+    }
+  }
+
   /**
    * Resolves comparison targets and retrieves the actual line-by-line unified git diff.
    * Depending on options or active auto-detection, it retrieves staged, branch-level,
@@ -90,7 +109,8 @@ export class GitService {
    * @returns An object containing the raw diff content, the exact git command executed, and the resolved comparison mode.
    */
   async getDiff(options: DiffOptions = {}): Promise<{ diff: string; command: string; mode: string }> {
-    const { mode = 'auto', baseBranch = 'main' } = options;
+    const { mode = 'auto' } = options;
+    const baseBranch = await this.getValidBaseBranch(options.baseBranch || 'main');
 
     try {
       if (mode === 'staged') {
@@ -185,7 +205,8 @@ export class GitService {
    * @returns A string summary of file diff statistics.
    */
   async getDiffStat(options: DiffOptions = {}): Promise<string> {
-    const { mode = 'auto', baseBranch = 'main' } = options;
+    const { mode = 'auto' } = options;
+    const baseBranch = await this.getValidBaseBranch(options.baseBranch || 'main');
 
     try {
       const args = ['--no-pager', 'diff', '--stat'];

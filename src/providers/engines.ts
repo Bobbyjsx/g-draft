@@ -380,7 +380,7 @@ export class ACPEngine implements AIEngine {
       await streamPromise;
     } catch (err: any) {
       if (!this.isDisposing) {
-        handlers.onError?.(err.message);
+        handlers.onError?.(getCleanErrorMessage(err, ''));
         throw err;
       }
     } finally {
@@ -391,6 +391,33 @@ export class ACPEngine implements AIEngine {
       releaseTurn?.();
     }
   }
+}
+
+function getCleanErrorMessage(e: any, stderr: string): string {
+  let summary = 'Provider process failed';
+  if (e.code) summary += ` (${e.code})`;
+  else if (e.exitCode !== undefined) summary += ` (exit code ${e.exitCode})`;
+  else if (e.signal) summary += ` (signal ${e.signal})`;
+
+  let output = '';
+  if (stderr) {
+    output = stderr.trim();
+  } else if (e.message) {
+    const colonIdx = e.message.indexOf(':');
+    if (e.message.startsWith('Command failed') && colonIdx !== -1) {
+      output = e.message.slice(0, colonIdx);
+    } else {
+      output = e.message;
+    }
+  }
+
+  if (output) {
+    if (output.length > 500) {
+      output = '...' + output.slice(-500);
+    }
+    return `${summary}.\nDetails: ${output}`;
+  }
+  return `${summary}. Check logs for more information.`;
 }
 
 export class CLIEngine implements AIEngine {
@@ -509,7 +536,7 @@ export class CLIEngine implements AIEngine {
       await child;
     } catch (e: any) {
       if (!this.isDisposing) {
-        handlers.onError?.(stderr || e.message);
+        handlers.onError?.(getCleanErrorMessage(e, stderr));
         throw e;
       }
     } finally {

@@ -34,7 +34,7 @@ describe('GitService', () => {
 
   it('should get staged diff', async () => {
     const gitService = new GitService();
-    (vi.mocked(execa) as any).mockResolvedValueOnce({ stdout: 'staged changes' });
+    (vi.mocked(execa) as any).mockResolvedValue({ stdout: 'staged changes' });
 
     const result = await gitService.getDiff({ mode: 'staged' });
     expect(result.diff).toBe('staged changes');
@@ -58,8 +58,9 @@ describe('GitService', () => {
   it('should get branch diff using merge-base', async () => {
     const gitService = new GitService();
     (vi.mocked(execa) as any)
-      .mockResolvedValueOnce({ stdout: 'merge-base-hash' })
-      .mockResolvedValueOnce({ stdout: 'branch changes' });
+      .mockResolvedValueOnce({ stdout: 'main' }) // getValidBaseBranch
+      .mockResolvedValueOnce({ stdout: 'merge-base-hash' }) // merge-base
+      .mockResolvedValueOnce({ stdout: 'branch changes' }); // diff
 
     const result = await gitService.getDiff({ baseBranch: 'main', mode: 'branch' });
     expect(result.diff).toBe('branch changes');
