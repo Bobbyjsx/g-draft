@@ -1,5 +1,11 @@
 # g-draft
 
+## 0.4.4
+
+### Patch Changes
+
+- 087f238: Improve UI error handling by truncating large command arguments and system prompts from provider failure messages. Full error details remain available in the local action logs.
+
 ## 0.4.3
 
 ### Patch Changes
